@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PenLine } from "lucide-react";
+import { Loader2, PenLine } from "lucide-react";
 import { SessionEvent } from "@/types/board";
 import { Whiteboard } from "@/components/board/Whiteboard";
 import { DiagramBoard } from "@/components/board/DiagramBoard";
@@ -15,7 +15,15 @@ function isRenderableBoardEvent(e: SessionEvent): boolean {
 // wipe transition between one board and the next. If new events arrive
 // while one is still revealing, it skips ahead to the newest rather than
 // queuing every intermediate one.
-export function Board({ events, audioSync }: { events: SessionEvent[]; audioSync?: BoardAudioSync }) {
+export function Board({
+  events,
+  audioSync,
+  pending,
+}: {
+  events: SessionEvent[];
+  audioSync?: BoardAudioSync;
+  pending?: boolean;
+}) {
   const boardEvents = useMemo(
     () => events.filter(isRenderableBoardEvent).sort((a, b) => a.seq - b.seq),
     [events]
@@ -131,7 +139,14 @@ export function Board({ events, audioSync }: { events: SessionEvent[]; audioSync
     return (
       <div className="flex h-full items-center justify-center bg-[var(--color-bg)] px-6 text-sm text-[var(--color-text-secondary)]">
         <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-8 py-10 text-center">
-          Paste a problem or upload a document to get started.
+          {pending ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Theresa is working on it…
+            </span>
+          ) : (
+            "Paste a problem or upload a document to get started."
+          )}
         </div>
       </div>
     );
@@ -146,9 +161,17 @@ export function Board({ events, audioSync }: { events: SessionEvent[]; audioSync
           className="min-h-[420px] rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-lg)] transition-opacity"
           style={{ opacity: wiping ? 0 : 1, transitionDuration: `${WIPE_DURATION_MS}ms` }}
         >
-          <div className="flex items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
-            <PenLine className="h-3.5 w-3.5" />
-            Board
+          <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
+            <span className="flex items-center gap-1.5">
+              <PenLine className="h-3.5 w-3.5" />
+              Board
+            </span>
+            {pending && (
+              <span className="flex items-center gap-1.5 normal-case tracking-normal text-[var(--color-text-secondary)]">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Thinking…
+              </span>
+            )}
           </div>
           {!wiping &&
             (board.kind === "diagram" ? (

@@ -44,11 +44,13 @@ export function ChatPanel({
   events,
   documentId,
   onNewEvents,
+  onSolvingChange,
 }: {
   sessionId: string;
   events: SessionEvent[];
   documentId?: string;
   onNewEvents: (events: SessionEvent[]) => void;
+  onSolvingChange?: (solving: boolean) => void;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -62,6 +64,7 @@ export function ChatPanel({
 
     setError(null);
     setSending(true);
+    onSolvingChange?.(true);
     const messageText = text;
     setText("");
 
@@ -81,6 +84,7 @@ export function ChatPanel({
       setError(err instanceof ApiError ? err.message : "something went wrong");
     } finally {
       setSending(false);
+      onSolvingChange?.(false);
     }
   }
 
