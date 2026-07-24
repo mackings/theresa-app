@@ -1,0 +1,166 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { MessageSquarePlus, Mic, MessageSquare, PanelLeftClose } from "lucide-react";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { Button, IconButton } from "@/components/ui/Button";
+import { Avatar } from "@/components/ui/Avatar";
+import { apiFetch } from "@/lib/api";
+import { createSession } from "@/lib/sessions";
+import { TutorSession } from "@/types/board";
+
+const MOBILE_BREAKPOINT = 1024;
+
+type Me = { id: string; email: string; name: string };
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+function groupByRecency(sessions: TutorSession[]): { label: string; sessions: TutorSession[] }[] {
+  const today = startOfDay(new Date());
+  const yesterday = today - 86400000;
+
+  const groups: Record<"Today" | "Yesterday" | "Older", TutorSession[]> = {
+    Today: [],
+    Yesterday: [],
+    Older: [],
+  };
+
+  for (const session of sessions) {
+    const t = startOfDay(new Date(session.updated_at));
+    if (t === today) groups.Today.push(session);
+    else if (t === yesterday) groups.Yesterday.push(session);
+    else groups.Older.push(session);
+  }
+
+  return (["Today", "Yesterday", "Older"] as const)
+    .filter((label) => groups[label].length > 0)
+    .map((label) => ({ label, sessions: groups[label] }));
+}
+
+export function Sidebar({ onClose }: { onClose?: () => void }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [sessions, setSessions] = useState<TutorSession[]>([]);
+  const [me, setMe] = useState<Me | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    apiFetch<TutorSession[]>("/api/sessions")
+      .then(setSessions)
+      .catch(() => {});
+    apiFetch<Me>("/api/auth/me")
+      .then(setMe)
+      .catch(() => {});
+  }, []);
+
+  function closeOnMobile() {
+    if (window.innerWidth < MOBILE_BREAKPOINT) onClose?.();
+  }
+
+  async function handleCreateSession(mode: "text" | "voice") {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const session = await createSession(mode);
+      closeOnMobile();
+      router.push(`/session/${session.id}`);
+    } catch {
+      router.push("/login");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const groups = groupByRecency(sessions);
+
+  return (
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="flex items-center justify-between gap-2 px-4 py-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-sm font-bold text-[var(--color-accent-foreground)]">
+            T
+          </div>
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">
+            Theresa
+          </span>
+        </div>
+        {onClose && (
+          <IconButton
+            variant="ghost"
+            aria-label="Close sidebar"
+            onClick={onClose}
+            className="h-7 w-7"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </IconButton>
+        )}
+      </div>
+
+      <div className="space-y-1.5 px-3">
+        <Button
+          variant="secondary"
+          onClick={() => handleCreateSession("text")}
+          disabled={creating}
+          icon={<MessageSquarePlus className="h-4 w-4" />}
+          className="w-full justify-start"
+        >
+          New session
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => handleCreateSession("voice")}
+          disabled={creating}
+          icon={<Mic className="h-4 w-4" />}
+          className="w-full justify-start"
+        >
+          Voice session
+        </Button>
+      </div>
+
+      <nav className="mt-4 flex-1 space-y-3 overflow-y-auto px-3 pb-3">
+        {groups.map((group) => (
+          <div key={group.label}>
+            <p className="px-2 pb-1 text-xs font-medium text-[var(--color-text-secondary)]">
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.sessions.map((session) => {
+                const active = pathname === `/session/${session.id}`;
+                const ModeIcon = session.mode === "voice" ? Mic : MessageSquare;
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => {
+                      closeOnMobile();
+                      router.push(`/session/${session.id}`);
+                    }}
+                    className={`flex w-full items-center gap-2 truncate rounded-[var(--radius-md)] px-2 py-2 text-left text-sm transition-colors ${
+                      active
+                        ? "bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]"
+                        : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]"
+                    }`}
+                  >
+                    <ModeIcon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{session.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      <div className="flex items-center justify-between border-t border-[var(--color-border)] px-3 py-3">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-[var(--color-text-primary)]">
+          <Avatar name={me?.name ?? "?"} size={26} />
+          <span className="truncate">{me?.name ?? "Guest"}</span>
+        </div>
+        <ThemeToggle />
+      </div>
+    </aside>
+  );
+}

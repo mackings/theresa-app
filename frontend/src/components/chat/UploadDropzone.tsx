@@ -1,0 +1,146 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, FileCheck2, Loader2, RotateCcw, Upload } from "lucide-react";
+import { apiFetch, ApiError } from "@/lib/api";
+import { IconButton } from "@/components/ui/Button";
+import { DocumentMeta } from "@/types/board";
+
+export function UploadDropzone({
+  onDocumentReady,
+}: {
+  onDocumentReady: (doc: DocumentMeta) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [doc, setDoc] = useState<DocumentMeta | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
+
+  async function pollUntilDone(id: string) {
+    while (!cancelledRef.current) {
+      await new Promise((r) => setTimeout(r, 2000));
+      if (cancelledRef.current) return;
+
+      const updated = await apiFetch<DocumentMeta>(`/api/documents/${id}`);
+      if (cancelledRef.current) return;
+
+      setDoc(updated);
+      if (updated.status === "understood") {
+        onDocumentReady(updated);
+        return;
+      }
+      if (updated.status === "failed") {
+        setError(updated.error_message ?? "failed to process document");
+        return;
+      }
+    }
+  }
+
+  async function onFileSelected(file: File) {
+    setError(null);
+    setDoc(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const uploaded = await apiFetch<DocumentMeta>("/api/documents", {
+        method: "POST",
+        body: formData,
+      });
+      setDoc(uploaded);
+      await pollUntilDone(uploaded.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "upload failed");
+    }
+  }
+
+  function reset() {
+    setDoc(null);
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="border-t border-[var(--color-border)] p-3">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onFileSelected(file);
+        }}
+      />
+
+      {!doc && !error && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) onFileSelected(file);
+          }}
+          className={`flex w-full flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-dashed px-3 py-4 text-sm transition-colors ${
+            dragOver
+              ? "border-[var(--color-accent)] bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]"
+              : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+          }`}
+        >
+          <Upload className="h-4 w-4" />
+          Upload a PDF or photo of a page
+        </button>
+      )}
+
+      {doc && doc.status === "processing" && (
+        <p className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Processing {doc.filename}...
+        </p>
+      )}
+
+      {doc && doc.status === "understood" && (
+        <div className="flex items-start gap-2 rounded-[var(--radius-md)] bg-[var(--color-surface-hover)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+          <FileCheck2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+          <div>
+            <p className="font-medium text-[var(--color-text-primary)]">{doc.filename}</p>
+            <p className="mt-1">{doc.extracted_summary}</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] bg-[var(--color-surface-hover)] px-3 py-2 text-xs text-[var(--color-danger)]">
+          <span className="flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {error}
+          </span>
+          <IconButton
+            variant="ghost"
+            aria-label="Try again"
+            onClick={reset}
+            className="h-6 w-6"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </IconButton>
+        </div>
+      )}
+    </div>
+  );
+}
