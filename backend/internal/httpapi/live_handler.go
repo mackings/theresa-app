@@ -24,6 +24,22 @@ import (
 
 const maxWSFrameBytes = 512 * 1024
 
+// connectWithFreshFallback tries to resume with handle, falling back to a
+// brand-new connection (empty handle) if that fails. A stored Gemini
+// resumption handle can expire server-side on its own schedule, independent
+// of anything client-visible - Gemini rejects the whole connection outright
+// when that happens ("BidiGenerateContent session expired") rather than
+// silently starting fresh, so without this fallback a session with a stale
+// handle would refuse to open at all instead of just starting a new
+// conversation.
+func connectWithFreshFallback(ctx context.Context, client *gemini.Client, model, handle string) (*live.Session, error) {
+	session, err := live.Connect(ctx, client, model, handle)
+	if err == nil || handle == "" {
+		return session, err
+	}
+	return live.Connect(ctx, client, model, "")
+}
+
 var reconnectBackoff = []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond, 3 * time.Second}
 
 var wsUpgrader = websocket.Upgrader{
@@ -61,7 +77,7 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	// session - first-ever, a manual page refresh, or a reconnect after the
 	// browser's own socket dropped - resumes prior Gemini conversation state
 	// if any exists, not just a reconnect within one already-open browser WS.
-	liveSession, err := live.Connect(ctx, h.gemini, h.cfg.GeminiLiveModel, session.GeminiResumptionHandle)
+	liveSession, err := connectWithFreshFallback(ctx, h.gemini, h.cfg.GeminiLiveModel, session.GeminiResumptionHandle)
 	if err != nil {
 		conn.WriteJSON(errorMessage("failed to start voice session"))
 		log.Printf("live session connect error: %v", err)
@@ -232,7 +248,7 @@ func (rl *liveRelay) attemptReconnect(ctx context.Context) bool {
 		case <-time.After(delay):
 		}
 
-		newSession, err := live.Connect(ctx, rl.geminiClient, rl.model, rl.resumptionHandle)
+		newSession, err := connectWithFreshFallback(ctx, rl.geminiClient, rl.model, rl.resumptionHandle)
 		if err != nil {
 			log.Printf("reconnect attempt failed: %v", err)
 			continue

@@ -109,12 +109,17 @@ export function VoiceControls({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 p-6">
-        <SpeakingOrb state={orbState} />
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 sm:gap-5 sm:p-6">
+        <div className="sm:hidden">
+          <SpeakingOrb state={orbState} size={64} />
+        </div>
+        <div className="hidden sm:block">
+          <SpeakingOrb state={orbState} />
+        </div>
         <Pill icon={<Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
           Theresa
         </Pill>
-        <p className="max-w-xs text-center text-xl font-semibold text-[var(--color-text-primary)]">
+        <p className="max-w-xs text-center text-base font-semibold text-[var(--color-text-primary)] sm:text-xl">
           {status}
         </p>
       </div>

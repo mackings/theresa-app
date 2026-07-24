@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   Calculator,
   GraduationCap,
-  MessageCircleQuestion,
   MessageSquare,
   MessageSquarePlus,
   Mic,
@@ -46,22 +45,22 @@ function relativeTime(iso: string): string {
 
 const ACTIONS = [
   {
-    icon: GraduationCap,
-    label: "Teach my course",
-    action: "upload" as const,
-    style: "tint" as const,
+    icon: Mic,
+    label: "Start a voice lesson",
+    action: "voice" as const,
+    style: "solid" as const,
   },
   {
     icon: Calculator,
     label: "Paste or type a problem",
     action: "focus" as const,
-    style: "solid" as const,
+    style: "outline" as const,
   },
   {
-    icon: MessageCircleQuestion,
-    label: "Ask anything",
-    action: "focus" as const,
-    style: "outline" as const,
+    icon: GraduationCap,
+    label: "Teach my course",
+    action: "upload" as const,
+    style: "tint" as const,
   },
 ];
 
@@ -110,9 +109,11 @@ export default function DashboardPage() {
     }
   }
 
-  function handleActionClick(action: "upload" | "focus") {
+  function handleActionClick(action: "upload" | "focus" | "voice") {
     if (action === "upload") {
       setShowUpload(true);
+    } else if (action === "voice") {
+      handleCreateSession("voice");
     } else {
       promptInputRef.current?.focus();
     }
@@ -141,7 +142,7 @@ export default function DashboardPage() {
     <AppShell>
       <div className="mx-auto max-w-4xl space-y-10 px-6 py-10">
         <div className="flex flex-col items-center text-center">
-          <SpeakingOrb state="listening" size={88} />
+          <SpeakingOrb state="listening" size={56} />
           <p className="mt-4 text-sm text-[var(--color-text-secondary)]">
             {greeting()}, {me.name}
           </p>
@@ -207,9 +208,10 @@ export default function DashboardPage() {
                 <button
                   key={a.label}
                   type="button"
+                  disabled={creating}
                   onClick={() => handleActionClick(a.action)}
                   style={{ animationDelay: `${i * 60}ms` }}
-                  className="fade-in-up flex items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-4 text-left shadow-[var(--shadow-xs)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+                  className={`fade-in-up flex items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-4 text-left shadow-[var(--shadow-xs)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] ${creating ? "pointer-events-none opacity-60" : ""}`}
                 >
                   <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] ${badgeClass}`}>
                     <a.icon className="h-4 w-4" />

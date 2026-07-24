@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Segment } from "@/lib/board/segments";
 import { useTypewriter } from "@/lib/board/useTypewriter";
 import { BoardCaret } from "@/components/board/BoardCaret";
@@ -35,9 +36,25 @@ export function Whiteboard({
   onComplete: () => void;
 }) {
   const { visibleLines, done } = useTypewriter(lines, onComplete);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // As the typewriter reveals more than fits in the visible board, keep the
+  // newest character in view instead of leaving the user to scroll down
+  // themselves mid-reveal. Board's scroll container centers its content
+  // (items-center) while it fits, and centering + overflow scroll has known
+  // cross-browser quirks with scrollIntoView (it can silently no-op), so
+  // this walks up to the nearest scrollable ancestor and sets its scrollTop
+  // directly instead.
+  useEffect(() => {
+    let el: HTMLElement | null = rootRef.current?.parentElement ?? null;
+    while (el && !["auto", "scroll"].includes(getComputedStyle(el).overflowY)) {
+      el = el.parentElement;
+    }
+    el?.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [visibleLines]);
 
   return (
-    <div className={`${caveat.variable} px-6 py-6`}>
+    <div ref={rootRef} className={`${caveat.variable} px-6 py-6`}>
       {title && (
         <p className="mb-3 font-mono text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
           {title}
