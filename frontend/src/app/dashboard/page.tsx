@@ -100,10 +100,10 @@ export default function DashboardPage() {
     setCreating(true);
     try {
       const session = await createSession("text");
-      await apiFetch(`/api/sessions/${session.id}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ text: prompt }),
-      });
+      sessionStorage.setItem(
+        `theresa:pending-message:${session.id}`,
+        JSON.stringify({ text: prompt })
+      );
       router.push(`/session/${session.id}`);
     } finally {
       setCreating(false);
@@ -123,10 +123,10 @@ export default function DashboardPage() {
     setCreating(true);
     try {
       const session = await createSession("text");
-      await apiFetch(`/api/sessions/${session.id}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ text: "Teach me this material", document_id: doc.id }),
-      });
+      sessionStorage.setItem(
+        `theresa:pending-message:${session.id}`,
+        JSON.stringify({ text: "Teach me this material", documentId: doc.id })
+      );
       router.push(`/session/${session.id}`);
     } finally {
       setCreating(false);
