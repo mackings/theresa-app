@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Check, FileUp, Mic, Sparkles } from "lucide-react";
+import { ArrowRight, Check, FileUp, Mic, Sparkles, User } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Pill } from "@/components/ui/Pill";
 import { PhoneMockup } from "@/components/ui/PhoneMockup";
@@ -249,37 +249,51 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mt-10 space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-md)] sm:p-6">
-            {CONVERSATION.map((turn, i) =>
-              turn.role === "user" ? (
-                <div
-                  key={i}
-                  style={{ animationDelay: `${i * 150}ms` }}
-                  className="fade-in-up ml-auto max-w-[85%] rounded-[var(--radius-lg)] bg-[var(--color-accent)] px-3.5 py-2 text-sm text-[var(--color-accent-foreground)] shadow-[var(--shadow-xs)]"
-                >
-                  {turn.text}
-                </div>
-              ) : (
-                <div
-                  key={i}
-                  style={{ animationDelay: `${i * 150}ms` }}
-                  className="fade-in-up mr-auto flex max-w-[85%] items-center gap-2"
-                >
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-foreground)]">
-                    {turn.kind === "voice" ? (
-                      <Mic className="h-3.5 w-3.5" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5" />
-                    )}
+          <div className="mt-10 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-md)] sm:p-6">
+            <div className="space-y-5">
+              {CONVERSATION.map((turn, i) =>
+                turn.role === "user" ? (
+                  <div
+                    key={i}
+                    style={{ animationDelay: `${i * 150}ms` }}
+                    className="fade-in-up flex items-end justify-end gap-2.5"
+                  >
+                    <div className="max-w-[75%] rounded-[var(--radius-lg)] bg-[var(--color-accent)] px-3.5 py-2 text-sm text-[var(--color-accent-foreground)] shadow-[var(--shadow-xs)]">
+                      {turn.text}
+                    </div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]">
+                      <User className="h-4 w-4" />
+                    </div>
                   </div>
-                  <div className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3.5 py-2 text-sm text-[var(--color-text-secondary)]">
-                    {turn.kind === "voice"
-                      ? "Switched to voice · listening"
-                      : `Explained on the board · ${turn.stepCount} steps`}
+                ) : (
+                  <div
+                    key={i}
+                    style={{ animationDelay: `${i * 150}ms` }}
+                    className="fade-in-up flex items-end gap-2.5"
+                  >
+                    <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+                      <span className="absolute inset-0 animate-pulse rounded-full bg-[var(--color-accent)]/25" />
+                      <VoicePreview size="h-9 w-9" />
+                    </div>
+                    <div className="max-w-[75%] rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3.5 py-2 text-sm">
+                      <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-primary)]">
+                        {turn.kind === "voice" ? (
+                          <Mic className="h-3 w-3 text-[var(--color-accent)]" />
+                        ) : (
+                          <Sparkles className="h-3 w-3 text-[var(--color-accent)]" />
+                        )}
+                        Theresa
+                      </p>
+                      <p className="text-[var(--color-text-secondary)]">
+                        {turn.kind === "voice"
+                          ? "Switched to voice, listening..."
+                          : `Explained on the board, ${turn.stepCount} steps`}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )
-            )}
+                )
+              )}
+            </div>
           </div>
         </section>
 
