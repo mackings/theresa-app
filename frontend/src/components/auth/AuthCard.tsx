@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SpeakingOrb } from "@/components/voice/SpeakingOrb";
 
@@ -81,16 +84,33 @@ export function AuthCard({
 export function FormField({
   label,
   placeholder,
+  type,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  const [visible, setVisible] = useState(false);
+  const isPassword = type === "password";
+
   return (
     <label className="block">
       <span className="sr-only">{label}</span>
-      <input
-        placeholder={placeholder ?? label}
-        {...props}
-        className="w-full rounded-[var(--radius-lg)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text-primary)] outline-none transition-shadow placeholder:text-[var(--color-text-secondary)] focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_20%,transparent)]"
-      />
+      <div className="relative">
+        <input
+          placeholder={placeholder ?? label}
+          {...props}
+          type={isPassword ? (visible ? "text" : "password") : type}
+          className={`w-full rounded-[var(--radius-lg)] bg-[var(--color-surface)] px-4 py-3 ${isPassword ? "pr-11" : ""} text-sm text-[var(--color-text-primary)] outline-none transition-shadow placeholder:text-[var(--color-text-secondary)] focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_20%,transparent)]`}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            aria-label={visible ? "Hide password" : "Show password"}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
+          >
+            {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
     </label>
   );
 }

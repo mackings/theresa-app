@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Check, FileUp, Mic, Sparkles, User } from "lucide-react";
+import { ArrowRight, Check, FileUp, Mic, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Pill } from "@/components/ui/Pill";
 import { PhoneMockup } from "@/components/ui/PhoneMockup";
@@ -37,6 +37,55 @@ function VoicePreview({ size = "h-16 w-16" }: { size?: string }) {
   );
 }
 
+function TheresaFace({ size = "h-24 w-24" }: { size?: string }) {
+  return (
+    <svg viewBox="0 0 120 140" className={size} role="img" aria-label="Theresa">
+      <path
+        d="M 8 140 C 8 108 30 96 60 96 C 90 96 112 108 112 140 Z"
+        fill="#2f6459"
+      />
+      <rect x="48" y="82" width="24" height="24" rx="6" fill="#8a5a3c" />
+      <circle cx="60" cy="48" r="36" fill="#3a2418" />
+      <circle cx="32" cy="62" r="5" fill="#8a5a3c" />
+      <circle cx="88" cy="62" r="5" fill="#8a5a3c" />
+      <circle cx="60" cy="58" r="28" fill="#8a5a3c" />
+      <path d="M 46 44 Q 52 39 58 43" stroke="#2b170c" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <path d="M 62 43 Q 68 39 74 44" stroke="#2b170c" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <ellipse cx="51" cy="57" rx="2.4" ry="3" fill="#231208" />
+      <ellipse cx="69" cy="57" rx="2.4" ry="3" fill="#231208" />
+      <path d="M 60 58 Q 58 63 59 66" stroke="#6b4429" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+      <path d="M 51 74 Q 60 78 69 74" stroke="#2b170c" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <circle cx="32" cy="68" r="2.4" fill="#d4af37" />
+      <circle cx="88" cy="68" r="2.4" fill="#d4af37" />
+    </svg>
+  );
+}
+
+function HumanFace({ size = "h-24 w-24" }: { size?: string }) {
+  return (
+    <svg viewBox="0 0 120 140" className={size} role="img" aria-label="You">
+      <path
+        d="M 8 140 C 8 108 30 96 60 96 C 90 96 112 108 112 140 Z"
+        fill="#5b7a99"
+      />
+      <rect x="48" y="82" width="24" height="24" rx="6" fill="#f0c9a0" />
+      <path
+        d="M 60 16 C 38 16 26 32 26 50 C 26 56 27 62 29 66 L 30 44 C 32 32 44 22 60 22 C 76 22 88 32 90 44 L 91 66 C 93 62 94 56 94 50 C 94 32 82 16 60 16 Z"
+        fill="#4a3527"
+      />
+      <circle cx="32" cy="62" r="5" fill="#f0c9a0" />
+      <circle cx="88" cy="62" r="5" fill="#f0c9a0" />
+      <circle cx="60" cy="58" r="28" fill="#f0c9a0" />
+      <path d="M 46 44 Q 52 40 58 43" stroke="#4a3527" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <path d="M 62 43 Q 68 40 74 44" stroke="#4a3527" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <ellipse cx="51" cy="57" rx="2.4" ry="3" fill="#2a2018" />
+      <ellipse cx="69" cy="57" rx="2.4" ry="3" fill="#2a2018" />
+      <path d="M 60 58 Q 58 63 59 66" stroke="#c9946a" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+      <path d="M 51 74 Q 60 78 69 74" stroke="#7a4a30" strokeWidth="2" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function UploadPreview() {
   return (
     <div className="flex w-full flex-col items-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-raised)] px-4 py-5">
@@ -62,13 +111,6 @@ const FEATURES = [
     title: "Upload anything",
     description: "A PDF, a photo of a page, or a pasted problem, understood in seconds.",
   },
-];
-
-const CONVERSATION = [
-  { role: "user" as const, text: "Can you explain how photosynthesis works?" },
-  { role: "assistant" as const, kind: "board" as const, stepCount: 5 },
-  { role: "user" as const, text: "Can you just say that out loud instead?" },
-  { role: "assistant" as const, kind: "voice" as const },
 ];
 
 export default function Home() {
@@ -241,58 +283,40 @@ export default function Home() {
               Real conversations
             </Pill>
             <h2 className="mt-4 text-3xl font-bold tracking-tight text-[var(--color-text-primary)] sm:text-4xl">
-              Ask anything. Theresa actually answers.
+              You talk. Theresa talks back.
             </h2>
             <p className="mx-auto mt-3 max-w-lg text-[var(--color-text-secondary)]">
-              A real back-and-forth, switching between voice and text
-              whenever you want.
+              A live, spoken back-and-forth, not a one-way script.
             </p>
           </div>
 
-          <div className="mt-10 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-md)] sm:p-6">
-            <div className="space-y-5">
-              {CONVERSATION.map((turn, i) =>
-                turn.role === "user" ? (
-                  <div
-                    key={i}
-                    style={{ animationDelay: `${i * 150}ms` }}
-                    className="fade-in-up flex items-end justify-end gap-2.5"
-                  >
-                    <div className="max-w-[75%] rounded-[var(--radius-lg)] bg-[var(--color-accent)] px-3.5 py-2 text-sm text-[var(--color-accent-foreground)] shadow-[var(--shadow-xs)]">
-                      {turn.text}
-                    </div>
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]">
-                      <User className="h-4 w-4" />
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    key={i}
-                    style={{ animationDelay: `${i * 150}ms` }}
-                    className="fade-in-up flex items-end gap-2.5"
-                  >
-                    <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-                      <span className="absolute inset-0 animate-pulse rounded-full bg-[var(--color-accent)]/25" />
-                      <VoicePreview size="h-9 w-9" />
-                    </div>
-                    <div className="max-w-[75%] rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3.5 py-2 text-sm">
-                      <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-primary)]">
-                        {turn.kind === "voice" ? (
-                          <Mic className="h-3 w-3 text-[var(--color-accent)]" />
-                        ) : (
-                          <Sparkles className="h-3 w-3 text-[var(--color-accent)]" />
-                        )}
-                        Theresa
-                      </p>
-                      <p className="text-[var(--color-text-secondary)]">
-                        {turn.kind === "voice"
-                          ? "Switched to voice, listening..."
-                          : `Explained on the board, ${turn.stepCount} steps`}
-                      </p>
-                    </div>
-                  </div>
-                )
-              )}
+          <div className="mt-10 flex flex-col items-center justify-center gap-8 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] px-6 py-12 shadow-[var(--shadow-md)] sm:flex-row sm:gap-12">
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative flex h-24 w-24 items-center justify-center sm:h-28 sm:w-28">
+                <span className="absolute inset-0 animate-pulse rounded-full bg-[var(--color-accent)]/20" />
+                <TheresaFace size="h-24 w-24 sm:h-28 sm:w-28" />
+              </div>
+              <span className="text-sm font-semibold text-[var(--color-accent)]">Theresa</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--color-text-secondary)]/50"
+                style={{ animationDelay: "0ms" }}
+              />
+              <span
+                className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--color-text-secondary)]/50"
+                style={{ animationDelay: "150ms" }}
+              />
+              <span
+                className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--color-text-secondary)]/50"
+                style={{ animationDelay: "300ms" }}
+              />
+            </div>
+
+            <div className="flex flex-col items-center gap-3">
+              <HumanFace size="h-24 w-24 sm:h-28 sm:w-28" />
+              <span className="text-sm font-semibold text-[var(--color-text-primary)]">You</span>
             </div>
           </div>
         </section>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, streamSessionMessage } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { Board } from "@/components/board/Board";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -55,15 +55,11 @@ export default function SessionPage() {
         }
 
         setSolving(true);
-        return apiFetch<{ events: SessionEvent[] }>(`/api/sessions/${s.id}/messages`, {
-          method: "POST",
-          body: JSON.stringify({
-            text: payload.text,
-            ...(payload.documentId ? { document_id: payload.documentId } : {}),
-          }),
-        })
-          .then((res) => setEvents((prev) => [...prev, ...res.events]))
-          .finally(() => setSolving(false));
+        return streamSessionMessage(
+          s.id,
+          { text: payload.text, ...(payload.documentId ? { document_id: payload.documentId } : {}) },
+          (event) => setEvents((prev) => [...prev, event])
+        ).finally(() => setSolving(false));
       })
       .catch(() => router.replace("/dashboard"));
   }, [params.id, router]);
@@ -97,7 +93,7 @@ export default function SessionPage() {
   return (
     <AppShell>
       <div className="flex h-full flex-col lg:flex-row">
-        <div className="h-2/5 w-full shrink-0 overflow-y-auto border-b border-[var(--color-border)] lg:h-full lg:w-auto lg:flex-1 lg:border-b-0">
+        <div className="h-3/5 w-full shrink-0 overflow-y-auto border-b border-[var(--color-border)] lg:h-full lg:w-auto lg:flex-1 lg:border-b-0">
           <Board
             events={events}
             audioSync={mode === "voice" ? audioSync : undefined}

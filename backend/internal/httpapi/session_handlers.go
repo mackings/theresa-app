@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -210,8 +211,6 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	boardReq := gemini.BoardRequest{Text: req.Text}
-	var docObjID bson.ObjectID
-	hasDoc := false
 
 	if req.DocumentID != "" {
 		id, err := bson.ObjectIDFromHex(req.DocumentID)
@@ -232,53 +231,81 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 
 		boardReq.FileURI = doc.GeminiFileURI
 		boardReq.FileMimeType = doc.MimeType
-		docObjID = id
-		hasDoc = true
+
+		h.sessions().UpdateOne(r.Context(), bson.M{"_id": session.ID}, bson.M{
+			"$addToSet": bson.M{"document_ids": id},
+		})
 	}
 
-	blocks, err := h.gemini.GenerateBoard(r.Context(), boardReq)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "failed to generate teaching content")
-		return
+	// Everything above can still fail with a normal HTTP status - nothing's
+	// been written to the response yet. From here on we're committed to a
+	// 200 streaming response: each event is sent to the browser as its own
+	// newline-delimited JSON line the moment it's ready (matching how voice
+	// mode already streams board updates over its WebSocket), instead of
+	// buffering the entire multi-step answer before the caller sees anything.
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	encoder := json.NewEncoder(w)
+	writeLine := func(v any) error {
+		if err := encoder.Encode(v); err != nil {
+			return err
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return nil
 	}
 
 	seq := len(session.Events)
-	now := time.Now()
-	var newEvents []models.SessionEvent
+	needsTitle := session.Title == "" || session.Title == defaultSessionTitle
 
 	if req.Text != "" {
-		newEvents = append(newEvents, models.SessionEvent{
-			Seq: seq, Type: "user_text", Role: "user", Text: req.Text, Timestamp: now,
-		})
+		event := models.SessionEvent{Seq: seq, Type: "user_text", Role: "user", Text: req.Text, Timestamp: time.Now()}
 		seq++
-	}
-	for _, block := range blocks {
-		block := block
-		newEvents = append(newEvents, models.SessionEvent{
-			Seq: seq, Type: "board_update", Role: "assistant", Board: &block, Timestamp: now,
-		})
-		seq++
+		persistEvent(h.db, session.ID, event)
+		if writeLine(event) != nil {
+			return
+		}
 	}
 
-	setFields := bson.M{"updated_at": now}
-	if (session.Title == "" || session.Title == defaultSessionTitle) && len(blocks) > 0 {
-		setFields["title"] = deriveTitle(blocks[0], req.Text)
+	err := h.gemini.GenerateBoardStream(r.Context(), boardReq, func(block models.BoardContent) error {
+		event := models.SessionEvent{Seq: seq, Type: "board_update", Role: "assistant", Board: &block, Timestamp: time.Now()}
+		seq++
+
+		var title string
+		if needsTitle {
+			title = deriveTitle(block, req.Text)
+			needsTitle = false
+		}
+		persistEvent(h.db, session.ID, event, title)
+
+		return writeLine(event)
+	})
+
+	if err != nil {
+		writeLine(map[string]string{"type": "error", "message": "failed to generate teaching content"})
+	}
+}
+
+// persistEvent appends a single event to a session's history, optionally
+// setting a derived title in the same update. Fire-and-forget on a detached
+// timeout context (mirrors the WS voice relay's appendEvent) rather than the
+// request context, since a client disconnecting mid-stream shouldn't cancel
+// the write for content Gemini has already produced.
+func persistEvent(db *mongo.Database, sessionID bson.ObjectID, event models.SessionEvent, title ...string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	setFields := bson.M{"updated_at": event.Timestamp}
+	if len(title) > 0 && title[0] != "" {
+		setFields["title"] = title[0]
 	}
 
-	update := bson.M{
-		"$push": bson.M{"events": bson.M{"$each": newEvents}},
+	db.Collection("sessions").UpdateOne(ctx, bson.M{"_id": sessionID}, bson.M{
+		"$push": bson.M{"events": event},
 		"$set":  setFields,
-	}
-	if hasDoc {
-		update["$addToSet"] = bson.M{"document_ids": docObjID}
-	}
-
-	if _, err := h.sessions().UpdateOne(r.Context(), bson.M{"_id": session.ID}, update); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save conversation")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"events": newEvents})
+	})
 }
 
 // loadOwnedSession loads the session named by the "id" URL param, scoped to
