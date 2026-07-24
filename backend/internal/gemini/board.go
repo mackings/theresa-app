@@ -6,16 +6,33 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"google.golang.org/genai"
 
 	"theresa/backend/internal/models"
 )
 
+// maxGenerateBoardWait bounds a single generation call. Gemini occasionally
+// gets stuck in a degenerate repetition loop - observed in practice, a
+// meta-question ("what is this built on?") produced four minutes of repeated
+// boilerplate before finally stopping on its own. Without a ceiling, a single
+// pathological generation leaves the user staring at "Theresa is working on
+// it" for minutes with no way to tell it apart from a slow-but-healthy one;
+// cutting it off falls through to the same fallback path a malformed
+// response already takes.
+const maxGenerateBoardWait = 45 * time.Second
+
 const systemInstruction = `You are a patient, clear tutor. Teach the user's question or
 document step by step, breaking the explanation into a sequence of "boards" suitable for
 a visual teaching board. Use standard English only - no slang, no persona, no regional
 dialect.
+
+If asked about yourself - what you're built on, how you work, whether you're an AI - give
+one short, honest board: you're an AI tutor that teaches step by step on a live board. Do
+not invent specific technical details you don't actually know, and do not pad the answer
+with restating the question or generic filler about your purpose. One or two plain
+sentences is enough; then wait for what the student actually wants to learn.
 
 Respond with ONLY a JSON array of boards, shown to the student one after another. Each
 board is an object with:
@@ -87,12 +104,15 @@ func (c *Client) GenerateBoardStream(ctx context.Context, req BoardRequest, onBo
 		ResponseSchema:    boardResponseSchema,
 	}
 
+	genCtx, cancel := context.WithTimeout(ctx, maxGenerateBoardWait)
+	defer cancel()
+
 	pr, pw := io.Pipe()
 	var fullText strings.Builder
 	var streamErr error
 
 	go func() {
-		for resp, err := range c.genai.Models.GenerateContentStream(ctx, c.textModel, []*genai.Content{content}, config) {
+		for resp, err := range c.genai.Models.GenerateContentStream(genCtx, c.textModel, []*genai.Content{content}, config) {
 			if err != nil {
 				streamErr = err
 				pw.CloseWithError(err)
@@ -160,6 +180,16 @@ const maxFallbackChars = 600
 // content, the kind of failure this whole fallback path exists to survive.
 func sanitizeFallbackText(text string) []string {
 	trimmed := strings.TrimSpace(text)
+
+	// The response never got further than raw JSON syntax - a truncated
+	// array before even one field closed, or a repetition loop cut off
+	// mid-string by the generation timeout. What's left is JSON noise, not
+	// prose worth showing verbatim (observed in practice: literal "[", "{",
+	// "\"kind\": \"lines\"," rendered as board text).
+	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
+		return []string{"Sorry, I had trouble putting together an answer for that - try asking again or rephrasing."}
+	}
+
 	if len(trimmed) > maxFallbackChars {
 		trimmed = trimmed[:maxFallbackChars]
 		if idx := strings.LastIndex(trimmed, " "); idx > maxFallbackChars/2 {
@@ -192,13 +222,22 @@ func sanitizeFallbackText(text string) []string {
 // normalizeBoard defends against a model putting the actual explanation into
 // "title" instead of "lines" (observed in practice despite the schema/prompt
 // both steering it toward "lines") - without this, a "lines" board with no
-// lines renders as an empty board with nothing to type out. It returns false
-// for a board that's unrecoverable (a "diagram" with no real mermaid content
-// - observed in practice as keyword-salad dumped into "title" instead), which
-// the caller drops rather than showing broken/garbage content.
+// lines renders as an empty board with nothing to type out. The title is run
+// through the same sanitizeFallbackText used for invalid-JSON responses
+// rather than moved over verbatim: a title is supposed to be "a few words at
+// most" per the system prompt, but a degenerate/repetitive model response
+// can still be syntactically valid JSON while dumping several thousand
+// characters of repeated boilerplate into "title" (observed in practice -
+// board.go's own generation timeout exists for the same underlying failure
+// mode when it breaks the JSON instead) - sanitizeFallbackText's length cap
+// and line-splitting bounds that same runaway text here too.
+// normalizeBoard returns false for a board that's unrecoverable (a "diagram"
+// with no real mermaid content - observed in practice as keyword-salad
+// dumped into "title" instead), which the caller drops rather than showing
+// broken/garbage content.
 func normalizeBoard(b *models.BoardContent) bool {
 	if b.Kind == "lines" && len(b.Lines) == 0 && b.Title != "" {
-		b.Lines = []string{b.Title}
+		b.Lines = sanitizeFallbackText(b.Title)
 		b.Title = ""
 	}
 	if b.Kind == "diagram" && b.Mermaid == "" {

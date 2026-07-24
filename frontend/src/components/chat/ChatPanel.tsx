@@ -68,11 +68,23 @@ export function ChatPanel({
     const messageText = text;
     setText("");
 
+    let firstBoardArrived = false;
     try {
       await streamSessionMessage(
         sessionId,
         { text: messageText, ...(documentId ? { document_id: documentId } : {}) },
-        (event) => onNewEvents([event])
+        (event) => {
+          onNewEvents([event]);
+          // The send button only needs to reflect "is my message on its way
+          // to Theresa" - once real content starts arriving, the board's own
+          // pending/thinking indicator (still active until the full answer
+          // finishes) is what should communicate ongoing generation, not a
+          // send button stuck spinning for the whole multi-second answer.
+          if (!firstBoardArrived && event.type === "board_update") {
+            firstBoardArrived = true;
+            setSending(false);
+          }
+        }
       );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "something went wrong");
