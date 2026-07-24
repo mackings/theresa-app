@@ -1,14 +1,5 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Check,
-  CheckCircle2,
-  FileUp,
-  GraduationCap,
-  Mic,
-  PenLine,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, Check, FileUp, Mic, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Pill } from "@/components/ui/Pill";
 import { PhoneMockup } from "@/components/ui/PhoneMockup";
@@ -69,26 +60,15 @@ const FEATURES = [
   {
     preview: <UploadPreview />,
     title: "Upload anything",
-    description: "A PDF, a photo of a page, or a pasted problem — understood in seconds.",
+    description: "A PDF, a photo of a page, or a pasted problem, understood in seconds.",
   },
 ];
 
-const HOW_IT_WORKS = [
-  {
-    icon: FileUp,
-    title: "Ask or upload",
-    description: "Paste a problem, ask a question, or upload your notes as a PDF or photo.",
-  },
-  {
-    icon: PenLine,
-    title: "Watch & listen",
-    description: "Theresa explains it out loud while writing it out, step by step, on a live board.",
-  },
-  {
-    icon: CheckCircle2,
-    title: "Actually understand",
-    description: "Follow along in voice or text, at your own pace, until it really clicks.",
-  },
+const CONVERSATION = [
+  { role: "user" as const, text: "Can you explain how photosynthesis works?" },
+  { role: "assistant" as const, kind: "board" as const, stepCount: 5 },
+  { role: "user" as const, text: "Can you just say that out loud instead?" },
+  { role: "assistant" as const, kind: "voice" as const },
 ];
 
 export default function Home() {
@@ -148,7 +128,7 @@ export default function Home() {
               <p className="mt-5 max-w-lg text-base text-[var(--color-text-secondary)] sm:text-lg">
                 Ask a question, paste a problem, or upload your notes. Theresa
                 explains it with a real voice while writing it out on a live
-                board — like a tutor beside you, not a search result.
+                board, like a tutor beside you, not a search result.
               </p>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -216,8 +196,7 @@ export default function Home() {
                     </p>
                   </div>
                   <div
-                    className="rounded-[var(--radius-lg)] p-4 text-white shadow-[var(--shadow-md)]"
-                    style={{ background: "linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 70%, black))" }}
+                    className="rounded-[var(--radius-lg)] bg-[var(--color-accent)] p-4 text-white shadow-[var(--shadow-md)]"
                   >
                     <p className="text-xs uppercase tracking-wide text-white/70">Board</p>
                     <p className="mt-1 text-sm font-medium">Newton&apos;s Second Law</p>
@@ -238,7 +217,7 @@ export default function Home() {
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">Theresa</p>
                 </div>
                 <p className="mt-1.5 text-xs text-[var(--color-text-secondary)]">
-                  Explained on the board — 6 steps
+                  Explained on the board · 6 steps
                 </p>
               </div>
 
@@ -256,38 +235,51 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
+        <section className="mx-auto w-full max-w-3xl px-6 py-16 sm:py-20">
           <div className="text-center">
-            <Pill icon={<GraduationCap className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
-              How it works
+            <Pill icon={<Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
+              Real conversations
             </Pill>
             <h2 className="mt-4 text-3xl font-bold tracking-tight text-[var(--color-text-primary)] sm:text-4xl">
-              Three steps to actually understanding it
+              Ask anything. Theresa actually answers.
             </h2>
+            <p className="mx-auto mt-3 max-w-lg text-[var(--color-text-secondary)]">
+              A real back-and-forth, switching between voice and text
+              whenever you want.
+            </p>
           </div>
 
-          <div className="relative mt-12 grid grid-cols-1 gap-8 sm:grid-cols-3 sm:gap-6">
-            <div
-              aria-hidden
-              className="absolute left-0 right-0 top-6 hidden border-t border-dashed border-[var(--color-border)] sm:block"
-            />
-            {HOW_IT_WORKS.map((step, i) => (
-              <div
-                key={step.title}
-                style={{ animationDelay: `${i * 100}ms` }}
-                className="fade-in-up relative flex flex-col items-center px-2 text-center"
-              >
-                <div className="relative z-10 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-foreground)] shadow-[var(--shadow-md)]">
-                  <step.icon className="h-5 w-5" />
+          <div className="mt-10 space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-md)] sm:p-6">
+            {CONVERSATION.map((turn, i) =>
+              turn.role === "user" ? (
+                <div
+                  key={i}
+                  style={{ animationDelay: `${i * 150}ms` }}
+                  className="fade-in-up ml-auto max-w-[85%] rounded-[var(--radius-lg)] bg-[var(--color-accent)] px-3.5 py-2 text-sm text-[var(--color-accent-foreground)] shadow-[var(--shadow-xs)]"
+                >
+                  {turn.text}
                 </div>
-                <p className="mt-4 text-base font-semibold text-[var(--color-text-primary)]">
-                  {step.title}
-                </p>
-                <p className="mt-1.5 max-w-xs text-sm text-[var(--color-text-secondary)]">
-                  {step.description}
-                </p>
-              </div>
-            ))}
+              ) : (
+                <div
+                  key={i}
+                  style={{ animationDelay: `${i * 150}ms` }}
+                  className="fade-in-up mr-auto flex max-w-[85%] items-center gap-2"
+                >
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-foreground)]">
+                    {turn.kind === "voice" ? (
+                      <Mic className="h-3.5 w-3.5" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                  <div className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3.5 py-2 text-sm text-[var(--color-text-secondary)]">
+                    {turn.kind === "voice"
+                      ? "Switched to voice · listening"
+                      : `Explained on the board · ${turn.stepCount} steps`}
+                  </div>
+                </div>
+              )
+            )}
           </div>
         </section>
 
@@ -298,7 +290,7 @@ export default function Home() {
                 What Makes Theresa Different
               </h2>
               <p className="mx-auto mt-3 max-w-xl text-[var(--color-text-secondary)]">
-                Real teaching, built to help you actually understand — not just
+                Real teaching, built to help you actually understand, not just
                 skim a summary.
               </p>
             </div>
@@ -323,7 +315,7 @@ export default function Home() {
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-black/10 blur-3xl"
+            className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-white/10 blur-3xl"
           />
           <div className="relative mx-auto flex max-w-4xl flex-col items-center gap-6 text-center">
             <h2 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
@@ -342,17 +334,16 @@ export default function Home() {
 
       <footer className="border-t border-[var(--color-border)] px-6 py-8 text-xs text-[var(--color-text-secondary)]">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 sm:flex-row sm:justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <div className="flex h-5 w-5 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-[10px] font-bold text-[var(--color-accent-foreground)]">
               T
             </div>
             <span>Theresa</span>
+            <span className="text-[var(--color-border)]">·</span>
+            <span className="opacity-70">A product of Decode Analytical</span>
           </div>
           <span>&copy; {new Date().getFullYear()} Theresa. All rights reserved.</span>
         </div>
-        <p className="mx-auto mt-5 max-w-6xl text-center text-[11px] text-[var(--color-text-secondary)] opacity-70">
-          A product of Decode Analytical
-        </p>
       </footer>
     </div>
   );
