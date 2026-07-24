@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AlertCircle, Loader2, Send } from "lucide-react";
-import { apiFetch, ApiError } from "@/lib/api";
+import { streamSessionMessage, ApiError } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
@@ -69,17 +69,11 @@ export function ChatPanel({
     setText("");
 
     try {
-      const res = await apiFetch<{ events: SessionEvent[] }>(
-        `/api/sessions/${sessionId}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            text: messageText,
-            ...(documentId ? { document_id: documentId } : {}),
-          }),
-        }
+      await streamSessionMessage(
+        sessionId,
+        { text: messageText, ...(documentId ? { document_id: documentId } : {}) },
+        (event) => onNewEvents([event])
       );
-      onNewEvents(res.events);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "something went wrong");
     } finally {

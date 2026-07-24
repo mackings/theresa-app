@@ -12,9 +12,11 @@ function isRenderableBoardEvent(e: SessionEvent): boolean {
 
 // Board is a single-slot sequencer, not a growing list: it shows one board
 // at a time, walking forward through boardEvents in seq order, with a brief
-// wipe transition between one board and the next. If new events arrive
-// while one is still revealing, it skips ahead to the newest rather than
-// queuing every intermediate one.
+// wipe transition between one board and the next. Every board is shown -
+// even ones that arrive while an earlier one is still mid-reveal (a fast
+// streaming text answer routinely produces a new step before the previous
+// one has finished typewriting/dwelling) - by always advancing to the very
+// next pending unit rather than skipping ahead to whatever's newest.
 export function Board({
   events,
   audioSync,
@@ -65,7 +67,6 @@ export function Board({
 
     const pending = boardEvents.filter((e) => e.seq > cursorSeqRef.current);
     if (pending.length === 0) return;
-    const newest = pending[pending.length - 1];
 
     if (activeSeqRef.current === null) {
       // Nothing shown yet - start from the oldest pending unit and walk
@@ -80,12 +81,15 @@ export function Board({
     }
 
     if (wipingRef.current) {
-      startWipeTo(newest);
+      // A wipe toward an earlier-decided target is already in flight - let
+      // it finish rather than retargeting mid-transition. Whatever arrived
+      // after that target gets picked up on the next pass, once this wipe
+      // completes and cursorSeq/activeSeq update.
       return;
     }
 
-    if (newest.seq > activeSeqRef.current) {
-      startWipeTo(newest);
+    if (pending[0].seq > activeSeqRef.current) {
+      startWipeTo(pending[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardEventsKey]);

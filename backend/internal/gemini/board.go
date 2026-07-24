@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"google.golang.org/genai"
@@ -60,11 +61,20 @@ type BoardRequest struct {
 	FileMimeType string
 }
 
-// GenerateBoard asks Gemini to teach req.Text (optionally grounded in an
-// uploaded file) and returns an ordered list of boards. If Gemini's response
-// isn't valid JSON, it's wrapped as a single lines-board rather than failing
-// the request.
-func (c *Client) GenerateBoard(ctx context.Context, req BoardRequest) ([]models.BoardContent, error) {
+// GenerateBoardStream asks Gemini to teach req.Text (optionally grounded in
+// an uploaded file), calling onBoard for each board as soon as Gemini
+// finishes generating it - instead of buffering the entire multi-step
+// response before returning anything. This is the exact same prompt/schema/
+// model call as a one-shot request would use; only how the response is
+// consumed changes (decoded element-by-element as it streams in, via the
+// standard json.Decoder array-streaming pattern over a pipe fed by
+// GenerateContentStream's chunks), so teaching content/order is unaffected -
+// only how soon each step becomes visible.
+//
+// If Gemini's response isn't valid JSON at all, the full accumulated text is
+// wrapped as a single lines-board and passed to onBoard, same fallback
+// behavior as the previous one-shot implementation.
+func (c *Client) GenerateBoardStream(ctx context.Context, req BoardRequest, onBoard func(models.BoardContent) error) error {
 	parts := []*genai.Part{{Text: req.Text}}
 	if req.FileURI != "" {
 		parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: req.FileURI, MIMEType: req.FileMimeType}})
@@ -77,30 +87,66 @@ func (c *Client) GenerateBoard(ctx context.Context, req BoardRequest) ([]models.
 		ResponseSchema:    boardResponseSchema,
 	}
 
-	resp, err := c.genai.Models.GenerateContent(ctx, c.textModel, []*genai.Content{content}, config)
-	if err != nil {
-		return nil, fmt.Errorf("generate board: %w", err)
+	pr, pw := io.Pipe()
+	var fullText strings.Builder
+	var streamErr error
+
+	go func() {
+		for resp, err := range c.genai.Models.GenerateContentStream(ctx, c.textModel, []*genai.Content{content}, config) {
+			if err != nil {
+				streamErr = err
+				pw.CloseWithError(err)
+				return
+			}
+			chunk := resp.Text()
+			fullText.WriteString(chunk)
+			if _, werr := pw.Write([]byte(chunk)); werr != nil {
+				return
+			}
+		}
+		pw.Close()
+	}()
+
+	decoder := json.NewDecoder(pr)
+	opened := false
+	if tok, err := decoder.Token(); err == nil {
+		delim, ok := tok.(json.Delim)
+		opened = ok && delim == '['
 	}
 
-	text := resp.Text()
-
-	var boards []models.BoardContent
-	if err := json.Unmarshal([]byte(text), &boards); err != nil || len(boards) == 0 {
-		return []models.BoardContent{{Kind: "lines", Lines: sanitizeFallbackText(text)}}, nil
-	}
-
-	usable := boards[:0]
-	for i := range boards {
-		if normalizeBoard(&boards[i]) {
-			usable = append(usable, boards[i])
+	any := false
+	if opened {
+		for decoder.More() {
+			var b models.BoardContent
+			if err := decoder.Decode(&b); err != nil {
+				break
+			}
+			if normalizeBoard(&b) {
+				any = true
+				if err := onBoard(b); err != nil {
+					io.Copy(io.Discard, pr) //nolint:errcheck // best-effort drain to release the producer goroutine
+					return err
+				}
+			}
 		}
 	}
 
-	if len(usable) == 0 {
-		return []models.BoardContent{{Kind: "lines", Lines: sanitizeFallbackText(text)}}, nil
-	}
+	// Drain any remaining stream output so the producer goroutine's next
+	// write never blocks forever on a reader nobody's servicing anymore
+	// (e.g. we stopped early because of a malformed array element) - and,
+	// for the invalid-JSON fallback path below, so fullText is guaranteed
+	// complete by the time we read it (the goroutine appends to fullText
+	// before writing each chunk to the pipe, and only closes pw as its very
+	// last action, so draining to a closed pipe means fullText is done too).
+	io.Copy(io.Discard, pr) //nolint:errcheck
 
-	return usable, nil
+	if any {
+		return nil
+	}
+	if streamErr != nil {
+		return fmt.Errorf("generate board: %w", streamErr)
+	}
+	return onBoard(models.BoardContent{Kind: "lines", Lines: sanitizeFallbackText(fullText.String())})
 }
 
 const maxFallbackChars = 600
