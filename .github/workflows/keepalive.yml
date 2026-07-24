@@ -1,0 +1,17 @@
+name: Keep Render services awake
+
+on:
+  schedule:
+    # Every 10 minutes - comfortably under Render free-tier's 15-minute
+    # inactivity spin-down window for both services.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend and frontend
+        run: |
+          curl -s -o /dev/null https://theresa-backend.onrender.com/healthz
+          curl -s -o /dev/null https://theresa-frontend.onrender.com/
