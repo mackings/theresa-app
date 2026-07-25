@@ -111,7 +111,7 @@ export function VoiceControls({
     <div className="flex h-full flex-col">
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 sm:gap-5 sm:p-6">
         <div className="sm:hidden">
-          <SpeakingOrb state={orbState} size={64} />
+          <SpeakingOrb state={orbState} size={44} />
         </div>
         <div className="hidden sm:block">
           <SpeakingOrb state={orbState} />
