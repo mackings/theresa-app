@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { AlertCircle, Loader2, Send } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertCircle, FileCheck2, Loader2, Paperclip, RotateCcw, Send } from "lucide-react";
 import { streamSessionMessage, ApiError } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
-import { SessionEvent } from "@/types/board";
+import { useDocumentUpload } from "@/lib/useDocumentUpload";
+import { DocumentMeta, SessionEvent } from "@/types/board";
 
 const SUGGESTIONS = [
   "Explain a concept: ",
@@ -43,18 +44,22 @@ export function ChatPanel({
   sessionId,
   events,
   documentId,
+  onDocumentReady,
   onNewEvents,
   onSolvingChange,
 }: {
   sessionId: string;
   events: SessionEvent[];
   documentId?: string;
+  onDocumentReady: (doc: DocumentMeta) => void;
   onNewEvents: (events: SessionEvent[]) => void;
   onSolvingChange?: (solving: boolean) => void;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { doc, error: uploadError, onFileSelected, reset: resetUpload } = useDocumentUpload(onDocumentReady);
 
   const turns = groupIntoTurns(events);
 
@@ -124,7 +129,60 @@ export function ChatPanel({
             {error}
           </p>
         )}
-        <div className="flex items-center gap-2 rounded-[var(--radius-full)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] py-1 pl-4 pr-1.5 shadow-[var(--shadow-xs)]">
+
+        {doc && doc.status === "processing" && (
+          <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Processing {doc.filename}...
+          </p>
+        )}
+        {doc && doc.status === "understood" && (
+          <div className="mb-2 flex items-start gap-2 rounded-[var(--radius-md)] bg-[var(--color-surface-hover)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+            <FileCheck2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+            <div>
+              <p className="font-medium text-[var(--color-text-primary)]">{doc.filename}</p>
+              <p className="mt-1">{doc.extracted_summary}</p>
+            </div>
+          </div>
+        )}
+        {uploadError && (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-[var(--radius-md)] bg-[var(--color-surface-hover)] px-3 py-2 text-xs text-[var(--color-danger)]">
+            <span className="flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              {uploadError}
+            </span>
+            <IconButton
+              variant="ghost"
+              aria-label="Try again"
+              onClick={resetUpload}
+              className="h-6 w-6"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </IconButton>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 rounded-[var(--radius-full)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] py-1 pl-2 pr-1.5 shadow-[var(--shadow-xs)]">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onFileSelected(file);
+              e.target.value = "";
+            }}
+          />
+          <IconButton
+            type="button"
+            variant="ghost"
+            aria-label="Upload a PDF or photo of a page"
+            onClick={() => fileInputRef.current?.click()}
+            className="h-8 w-8 shrink-0 rounded-[var(--radius-full)]"
+          >
+            <Paperclip className="h-4 w-4" />
+          </IconButton>
           <input
             type="text"
             value={text}
