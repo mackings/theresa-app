@@ -10,8 +10,9 @@ import { BoardAudioSync } from "@/lib/board/audioSync";
 import { SpeakingOrb, OrbState } from "@/components/voice/SpeakingOrb";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
-import { formatNaira } from "@/lib/credits";
 import { BoardContentBlock } from "@/types/board";
+
+const LOW_CREDITS_TOAST_MS = 6000;
 
 export function VoiceControls({
   sessionId,
@@ -29,9 +30,8 @@ export function VoiceControls({
   const [textInput, setTextInput] = useState("");
   const [reconnecting, setReconnecting] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
-  const [balanceKobo, setBalanceKobo] = useState<number | null>(null);
-  const [freeTrialSecondsLeft, setFreeTrialSecondsLeft] = useState<number | null>(null);
   const [outOfCredits, setOutOfCredits] = useState(false);
+  const [lowCreditsToast, setLowCreditsToast] = useState<number | null>(null);
 
   const connectionRef = useRef<LiveSessionConnection | null>(null);
   const micRef = useRef<MicCapture | null>(null);
@@ -65,16 +65,13 @@ export function VoiceControls({
       onError: (message) => setError(message),
       onReconnecting: () => setReconnecting(true),
       onReconnected: () => setReconnecting(false),
-      onCreditBalance: (kobo, freeTrialSeconds) => {
-        setBalanceKobo(kobo);
-        setFreeTrialSecondsLeft(freeTrialSeconds);
-      },
       onOutOfCredits: () => {
         setOutOfCredits(true);
         micRef.current?.stop();
         micRef.current = null;
         setMicOn(false);
       },
+      onLowCredits: (percentUsed) => setLowCreditsToast(percentUsed),
     });
     connectionRef.current = connection;
 
@@ -86,6 +83,12 @@ export function VoiceControls({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  useEffect(() => {
+    if (lowCreditsToast === null) return;
+    const timer = setTimeout(() => setLowCreditsToast(null), LOW_CREDITS_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [lowCreditsToast]);
 
   async function toggleMic() {
     if (outOfCredits) return;
@@ -124,7 +127,23 @@ export function VoiceControls({
         : "idle";
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
+      {lowCreditsToast !== null && (
+        <Link
+          href="/credits"
+          className={`absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-[var(--radius-full)] px-4 py-2 text-sm font-medium shadow-[var(--shadow-md)] transition-opacity hover:opacity-90 ${
+            lowCreditsToast >= 95
+              ? "bg-[var(--color-danger)] text-white"
+              : "border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] text-[var(--color-text-primary)]"
+          }`}
+        >
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {lowCreditsToast >= 95
+            ? "Almost out of credits - add more to keep going"
+            : `You've used ${lowCreditsToast}% of your voice credits`}
+        </Link>
+      )}
+
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 sm:gap-5 sm:p-6">
         <div className="sm:hidden">
           <SpeakingOrb state={orbState} size={44} />
@@ -138,15 +157,6 @@ export function VoiceControls({
         <p className="max-w-xs text-center text-base font-semibold text-[var(--color-text-primary)] sm:text-xl">
           {outOfCredits ? "Out of voice credits" : status}
         </p>
-        {!outOfCredits && (freeTrialSecondsLeft || balanceKobo !== null) && (
-          <p className="text-xs text-[var(--color-text-secondary)]">
-            {freeTrialSecondsLeft && freeTrialSecondsLeft > 0
-              ? `${Math.ceil(freeTrialSecondsLeft / 60)} min free trial left`
-              : balanceKobo !== null
-                ? `${formatNaira(balanceKobo)} remaining`
-                : null}
-          </p>
-        )}
         {outOfCredits && (
           <Link
             href="/credits"

@@ -27,6 +27,7 @@ const (
 	wsTypeReconnected   = "reconnected"     // server -> client
 	wsTypeOutOfCredits  = "out_of_credits"  // server -> client: session ending, balance exhausted
 	wsTypeCreditBalance = "credit_balance"  // server -> client: {balance_kobo, free_trial_seconds_remaining}
+	wsTypeLowCredits    = "low_credits"     // server -> client: {percent_used} - fires once per crossed threshold (50/75/95)
 )
 
 type audioChunkPayload struct {
@@ -44,6 +45,10 @@ type errorPayload struct {
 type creditBalancePayload struct {
 	BalanceKobo          int64 `json:"balance_kobo"`
 	FreeTrialSecondsLeft int   `json:"free_trial_seconds_remaining"`
+}
+
+type lowCreditsPayload struct {
+	PercentUsed int `json:"percent_used"`
 }
 
 func newWSMessage(msgType string, payload any) wsMessage {
@@ -68,4 +73,8 @@ func creditBalanceMessage(balanceKobo int64, freeTrialSecondsLeft int) wsMessage
 		BalanceKobo:          balanceKobo,
 		FreeTrialSecondsLeft: freeTrialSecondsLeft,
 	})
+}
+
+func lowCreditsMessage(percentUsed int) wsMessage {
+	return newWSMessage(wsTypeLowCredits, lowCreditsPayload{PercentUsed: percentUsed})
 }
