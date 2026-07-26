@@ -167,10 +167,18 @@ func VerifyWebhookSignature(body []byte, signatureHeader, secretHash string) boo
 	if signatureHeader == "" || secretHash == "" {
 		return false
 	}
+	expected := ExpectedWebhookSignature(body, secretHash)
+	return hmac.Equal([]byte(expected), []byte(signatureHeader))
+}
+
+// ExpectedWebhookSignature computes the HMAC-SHA256 hex digest a valid
+// webhook for this exact body should carry - exported separately so a
+// rejected webhook can log what we computed alongside what was received,
+// for diagnosing a real mismatch without exposing the secret hash itself.
+func ExpectedWebhookSignature(body []byte, secretHash string) string {
 	mac := hmac.New(sha256.New, []byte(secretHash))
 	mac.Write(body)
-	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(expected), []byte(signatureHeader))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // WebhookTransactionID extracts a transaction id from a Flutterwave webhook
