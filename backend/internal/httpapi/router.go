@@ -14,12 +14,34 @@ import (
 	"theresa/backend/internal/gemini"
 )
 
+// noisyHealthCheckPaths are hit every few seconds by Render's own internal
+// prober and external uptime monitors (both configured to keep the free-tier
+// service from sleeping) - real traffic, but not worth a log line every time.
+var noisyHealthCheckPaths = map[string]bool{
+	"/healthz":     true,
+	"/":            true,
+	"/favicon.ico": true,
+}
+
+// quietLogger wraps chi's request logger so the constant health-check
+// polling above doesn't drown out real application request logs.
+func quietLogger(next http.Handler) http.Handler {
+	logged := middleware.Logger(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if noisyHealthCheckPaths[r.URL.Path] {
+			next.ServeHTTP(w, r)
+			return
+		}
+		logged.ServeHTTP(w, r)
+	})
+}
+
 // NewRouter assembles the chi router with the global middleware stack and
 // registers all HTTP routes.
 func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client, geminiClient *gemini.Client) http.Handler {
 	r := chi.NewRouter()
 
-	r.Use(middleware.Logger)
+	r.Use(quietLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{cfg.FrontendURL},

@@ -11,6 +11,7 @@ export interface LiveSessionHandlers {
   onClose?: () => void;
   onCreditBalance?: (balanceKobo: number, freeTrialSecondsRemaining: number) => void;
   onOutOfCredits?: () => void;
+  onLowCredits?: (percentUsed: number) => void;
 }
 
 export interface LiveSessionConnection {
@@ -93,6 +94,11 @@ export function connectLiveSession(
           sessionEndedByServer = true;
           handlers.onOutOfCredits?.();
           break;
+        case "low_credits": {
+          const { percent_used } = msg.payload as { percent_used: number };
+          handlers.onLowCredits?.(percent_used);
+          break;
+        }
       }
     };
 

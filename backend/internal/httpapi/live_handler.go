@@ -140,6 +140,16 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 
 	conn.WriteJSON(creditBalanceMessage(user.CreditBalanceKobo, user.FreeTrialSecondsRemaining))
 
+	// Only a genuinely brand new session (no prior events) gets the opening
+	// greeting - reconnecting to an ongoing conversation must never reset it
+	// back to "what would you like to learn today", which would contradict
+	// the resumption handle actually continuing the same conversation state.
+	if len(session.Events) == 0 {
+		if err := liveSession.SendText(live.GreetingPrompt(user.Name)); err != nil {
+			log.Printf("failed to send opening greeting: %v", err)
+		}
+	}
+
 	// readPump blocks on conn.ReadMessage() and recvLoop blocks on
 	// liveSession.Receive() - neither call is itself context-aware, so
 	// whichever side finishes first closes BOTH underlying connections here
@@ -639,6 +649,7 @@ func (rl *liveRelay) billTick(ctx context.Context) bool {
 	rl.conn.WriteJSON(creditBalanceMessage(result.RemainingKobo, rl.freeTrialSecondsRemaining))
 
 	for _, pct := range result.CrossedThresholds {
+		rl.conn.WriteJSON(lowCreditsMessage(pct))
 		rl.notifyLowCredits(pct, result.RemainingKobo)
 	}
 

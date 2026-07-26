@@ -1,5 +1,7 @@
 package live
 
+import "fmt"
+
 // PersonaInstruction is the system instruction for live voice tutoring
 // sessions. Unlike M3's text-only board generation (which stays in standard
 // English), the voice persona speaks in a warm, West African/Nigerian
@@ -31,3 +33,16 @@ in one or two short sentences that they've used up their credits for now, and th
 be glad to continue as soon as they top up. Don't ask any follow-up question, don't call
 show_working or draw_diagram - just speak the goodbye, since the session ends immediately
 after this.`
+
+// GreetingPrompt is sent (as if typed by the user) the moment a brand new
+// voice session opens - the user hasn't said anything yet, so Theresa speaks
+// first instead of the call opening in silence. Only used on a session's
+// very first connection (no prior events); reconnecting to an ongoing
+// conversation should never reset it back to this opening line.
+func GreetingPrompt(name string) string {
+	return fmt.Sprintf(`This is the very start of a brand new session - the user hasn't said
+anything yet, so you speak first. In your own warm Pidgin-inflected voice, greet %s by name,
+introduce yourself as Theresa, and ask what they'd like to learn today - keep it to one
+short, natural turn. Don't call show_working or draw_diagram yet, just greet them and then
+wait for their reply.`, name)
+}
