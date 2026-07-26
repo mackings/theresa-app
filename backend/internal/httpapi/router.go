@@ -65,10 +65,24 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		r.Post("/{id}/messages", sessionHandler.PostMessage)
 	})
 
-	liveHandler := NewLiveHandler(db, cfg, geminiClient)
+	liveHandler := NewLiveHandler(db, cfg, geminiClient, emailClient)
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAuth(cfg.JWTCookieName, cfg.JWTSecret))
 		r.Get("/ws/session/{id}", liveHandler.HandleConnection)
+	})
+
+	paymentHandler := NewPaymentHandler(db, cfg)
+	r.Route("/api/payments", func(r chi.Router) {
+		// The webhook is Flutterwave calling us directly - it carries no
+		// session cookie, and is authenticated by its own signature header
+		// instead (checked inside Webhook), not the cookie-based middleware.
+		r.Post("/webhook", paymentHandler.Webhook)
+
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuth(cfg.JWTCookieName, cfg.JWTSecret))
+			r.Post("/initiate", paymentHandler.Initiate)
+			r.Get("/balance", paymentHandler.Balance)
+		})
 	})
 
 	return r

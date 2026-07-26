@@ -25,6 +25,8 @@ const (
 	wsTypeError         = "error"           // server -> client: {message}
 	wsTypeReconnecting  = "reconnecting"    // server -> client
 	wsTypeReconnected   = "reconnected"     // server -> client
+	wsTypeOutOfCredits  = "out_of_credits"  // server -> client: session ending, balance exhausted
+	wsTypeCreditBalance = "credit_balance"  // server -> client: {balance_kobo, free_trial_seconds_remaining}
 )
 
 type audioChunkPayload struct {
@@ -37,6 +39,11 @@ type textInputPayload struct {
 
 type errorPayload struct {
 	Message string `json:"message"`
+}
+
+type creditBalancePayload struct {
+	BalanceKobo          int64 `json:"balance_kobo"`
+	FreeTrialSecondsLeft int   `json:"free_trial_seconds_remaining"`
 }
 
 func newWSMessage(msgType string, payload any) wsMessage {
@@ -54,4 +61,11 @@ func boardUpdateMessage(block models.BoardContent) wsMessage {
 
 func errorMessage(message string) wsMessage {
 	return newWSMessage(wsTypeError, errorPayload{Message: message})
+}
+
+func creditBalanceMessage(balanceKobo int64, freeTrialSecondsLeft int) wsMessage {
+	return newWSMessage(wsTypeCreditBalance, creditBalancePayload{
+		BalanceKobo:          balanceKobo,
+		FreeTrialSecondsLeft: freeTrialSecondsLeft,
+	})
 }

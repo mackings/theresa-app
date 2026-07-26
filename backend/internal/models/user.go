@@ -18,4 +18,25 @@ type User struct {
 	ResetTokenExpiresAt        time.Time     `bson:"reset_token_expires_at,omitempty"`
 	CreatedAt                  time.Time     `bson:"created_at"`
 	LastLoginAt                time.Time     `bson:"last_login_at"`
+
+	// CreditBalanceKobo is money, stored as an integer count of kobo (1/100
+	// of a naira) rather than a float - avoids floating-point rounding error
+	// accumulating across many small per-session deductions, which matters
+	// far more for a running balance than for a one-off display value.
+	CreditBalanceKobo int64 `bson:"credit_balance_kobo"`
+
+	// FreeTrialSecondsRemaining starts at 300 (5 minutes) for a new account
+	// and decrements as voice sessions run, before any credits are touched.
+	// Cumulative across sessions, not per-session - a user can spend it in
+	// several short calls instead of one 5-minute sitting.
+	FreeTrialSecondsRemaining int `bson:"free_trial_seconds_remaining"`
+
+	// CreditCycleStartKobo is the balance immediately after the most recent
+	// top-up (or 0 if never topped up) - the baseline the 50/75/95%-used
+	// notifications are measured against. Reset on every successful
+	// purchase, along with the three Notified flags below.
+	CreditCycleStartKobo int64 `bson:"credit_cycle_start_kobo"`
+	Notified50Percent    bool  `bson:"notified_50_percent"`
+	Notified75Percent    bool  `bson:"notified_75_percent"`
+	Notified95Percent    bool  `bson:"notified_95_percent"`
 }

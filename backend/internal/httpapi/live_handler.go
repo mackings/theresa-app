@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -16,11 +17,26 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"google.golang.org/genai"
 
+	"theresa/backend/internal/billing"
 	"theresa/backend/internal/config"
+	"theresa/backend/internal/email"
 	"theresa/backend/internal/gemini"
 	"theresa/backend/internal/gemini/live"
 	"theresa/backend/internal/models"
 )
+
+// billingTickInterval is how often accumulated voice usage is converted to
+// a credit deduction - frequent enough that the balance reads as "quietly
+// ticking down" rather than a large jump at session end, and frequent
+// enough that a crash mid-session only loses at most one tick's worth of
+// unbilled usage.
+const billingTickInterval = 20 * time.Second
+
+// farewellTimeout bounds how long endGracefully waits for Theresa to
+// actually speak her out-of-credits goodbye before tearing the connection
+// down regardless - a real turn is a couple seconds at most, this just
+// guards against Gemini never responding.
+const farewellTimeout = 12 * time.Second
 
 const maxWSFrameBytes = 512 * 1024
 
@@ -50,15 +66,22 @@ type LiveHandler struct {
 	db     *mongo.Database
 	cfg    config.Config
 	gemini *gemini.Client
+	email  *email.Client
 }
 
-func NewLiveHandler(db *mongo.Database, cfg config.Config, geminiClient *gemini.Client) *LiveHandler {
-	return &LiveHandler{db: db, cfg: cfg, gemini: geminiClient}
+func NewLiveHandler(db *mongo.Database, cfg config.Config, geminiClient *gemini.Client, emailClient *email.Client) *LiveHandler {
+	return &LiveHandler{db: db, cfg: cfg, gemini: geminiClient, email: emailClient}
 }
 
 func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	session, ok := loadOwnedSession(w, r, h.db)
 	if !ok {
+		return
+	}
+
+	var user models.User
+	if err := h.db.Collection("users").FindOne(r.Context(), bson.M{"_id": session.OwnerID}).Decode(&user); err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -68,6 +91,15 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	conn.SetReadLimit(maxWSFrameBytes)
+
+	// Refuse before ever touching Gemini if there's nothing left to spend -
+	// free trial exhausted and a zero (or negative, shouldn't happen but
+	// guard anyway) credit balance. Saves the cost of opening a Gemini
+	// connection just to immediately tear it down.
+	if user.FreeTrialSecondsRemaining <= 0 && user.CreditBalanceKobo <= 0 {
+		conn.WriteJSON(newWSMessage(wsTypeOutOfCredits, nil))
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -85,19 +117,28 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	relay := &liveRelay{
-		db:               h.db,
-		conn:             conn,
-		live:             liveSession,
-		session:          session,
-		seq:              len(session.Events),
-		geminiClient:     h.gemini,
-		model:            h.cfg.GeminiLiveModel,
-		resumptionHandle: session.GeminiResumptionHandle,
+		db:                        h.db,
+		conn:                      conn,
+		live:                      liveSession,
+		session:                   session,
+		seq:                       len(session.Events),
+		geminiClient:              h.gemini,
+		model:                     h.cfg.GeminiLiveModel,
+		resumptionHandle:          session.GeminiResumptionHandle,
+		userID:                    user.ID,
+		email:                     h.email,
+		usdToNGNRate:              h.cfg.USDToNGNRate,
+		freeTrialSecondsRemaining: user.FreeTrialSecondsRemaining,
+		creditBalanceKobo:         user.CreditBalanceKobo,
+		lastBillTime:              time.Now(),
+		farewellDone:              make(chan struct{}),
 	}
 	// relay.live may be swapped by attemptReconnect during the connection's
 	// lifetime, so cleanup must go through getLive() to close whichever
 	// Gemini session is current, not the one captured in this local var.
 	defer func() { relay.getLive().Close() }()
+
+	conn.WriteJSON(creditBalanceMessage(user.CreditBalanceKobo, user.FreeTrialSecondsRemaining))
 
 	// readPump blocks on conn.ReadMessage() and recvLoop blocks on
 	// liveSession.Receive() - neither call is itself context-aware, so
@@ -108,6 +149,8 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 		relay.getLive().Close()
 	}()
+
+	go relay.runBillingTicker(ctx, cancel)
 
 	done := make(chan struct{})
 	go func() {
@@ -140,6 +183,30 @@ type liveRelay struct {
 
 	mu   sync.RWMutex
 	live *live.Session
+
+	// Billing: userID/email/usdToNGNRate are fixed for the connection's
+	// lifetime. The pending counters accumulate real usage between billing
+	// ticks and are guarded by billingMu since readPump, recvLoop, and the
+	// billing ticker are three separate goroutines all touching them.
+	userID       bson.ObjectID
+	email        *email.Client
+	usdToNGNRate float64
+
+	billingMu                 sync.Mutex
+	userAudioBytesPending     int64
+	theresaAudioBytesPending  int64
+	textInCharsPending        int
+	textOutCharsPending       int
+	lastBillTime              time.Time
+	freeTrialSecondsRemaining int
+	creditBalanceKobo         int64
+
+	// Set by endGracefully when the account runs out of credits, so
+	// recvLoop knows a subsequent turn_complete is Theresa's farewell
+	// finishing (not an ordinary turn) and signals farewellDone.
+	awaitingFarewell  atomic.Bool
+	farewellDone      chan struct{}
+	farewellCloseOnce sync.Once
 }
 
 func (rl *liveRelay) getLive() *live.Session {
@@ -178,6 +245,7 @@ func (rl *liveRelay) readPump(cancel context.CancelFunc) {
 			if err != nil {
 				continue
 			}
+			rl.addUserAudioBytes(len(pcm))
 			// A send failure here is non-fatal: a reconnect may be in
 			// progress, in which case this chunk is simply dropped (an
 			// acceptable loss for a live audio stream) rather than ending
@@ -266,6 +334,7 @@ func (rl *liveRelay) handleServerContent(content *genai.LiveServerContent) {
 	if content.ModelTurn != nil {
 		for _, part := range content.ModelTurn.Parts {
 			if part.InlineData != nil && len(part.InlineData.Data) > 0 {
+				rl.addTheresaAudioBytes(len(part.InlineData.Data))
 				rl.conn.WriteJSON(audioChunkOutMessage(part.InlineData.Data))
 			}
 		}
@@ -276,6 +345,9 @@ func (rl *liveRelay) handleServerContent(content *genai.LiveServerContent) {
 	}
 	if content.TurnComplete || content.GenerationComplete {
 		rl.conn.WriteJSON(newWSMessage(wsTypeTurnComplete, nil))
+		if rl.awaitingFarewell.Load() {
+			rl.farewellCloseOnce.Do(func() { close(rl.farewellDone) })
+		}
 	}
 }
 
@@ -288,6 +360,11 @@ func (rl *liveRelay) handleToolCall(toolCall *genai.LiveServerToolCall) {
 			rl.conn.WriteJSON(boardUpdateMessage(board))
 			rl.appendEvent(models.SessionEvent{Type: "board_update", Role: "assistant", Board: &board})
 			rl.maybeSetTitle(board)
+			// Rough character counts for the small text portion of this
+			// exchange: the board content Gemini generated (billed as text
+			// output) and our tiny tool-response acknowledgment (billed as
+			// text input). Not exact token counts - see EstimateTextTokens.
+			rl.addTextChars(toolResponseChars, boardContentChars(board))
 		} else {
 			response = map[string]any{"error": fmt.Sprintf(
 				"%s call had empty or malformed arguments; retry with real content", call.Name)}
@@ -405,4 +482,192 @@ func (rl *liveRelay) appendEvent(event models.SessionEvent) {
 		"$push": bson.M{"events": event},
 		"$set":  bson.M{"updated_at": event.Timestamp},
 	})
+}
+
+// toolResponseChars is a small fixed estimate for the tiny tool-response
+// acknowledgment sent back to Gemini after each show_working/draw_diagram
+// call ({"output":"ok"} or a short error string) - not worth measuring
+// exactly given how small and constant-shaped it is.
+const toolResponseChars = 20
+
+// boardContentChars estimates the character count of what Gemini generated
+// for one tool call - the billable "text output" side of a board update.
+func boardContentChars(board models.BoardContent) int {
+	n := len(board.Title) + len(board.Mermaid)
+	for _, line := range board.Lines {
+		n += len(line)
+	}
+	return n
+}
+
+func (rl *liveRelay) addUserAudioBytes(n int) {
+	rl.billingMu.Lock()
+	rl.userAudioBytesPending += int64(n)
+	rl.billingMu.Unlock()
+}
+
+func (rl *liveRelay) addTheresaAudioBytes(n int) {
+	rl.billingMu.Lock()
+	rl.theresaAudioBytesPending += int64(n)
+	rl.billingMu.Unlock()
+}
+
+func (rl *liveRelay) addTextChars(inChars, outChars int) {
+	rl.billingMu.Lock()
+	rl.textInCharsPending += inChars
+	rl.textOutCharsPending += outChars
+	rl.billingMu.Unlock()
+}
+
+// runBillingTicker periodically converts accumulated audio/text usage into
+// a credit deduction. Stops on ctx cancellation (connection ending for any
+// other reason) or calls cancel itself if the account runs out of credits
+// mid-session, tearing the connection down the same way any other fatal
+// condition does.
+func (rl *liveRelay) runBillingTicker(ctx context.Context, cancel context.CancelFunc) {
+	ticker := time.NewTicker(billingTickInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if rl.billTick(ctx) {
+				rl.endGracefully(ctx, cancel)
+				return
+			}
+		}
+	}
+}
+
+// endGracefully lets Theresa actually say goodbye - in her own voice - before
+// the connection closes, instead of cutting her off silently mid-sentence.
+// Tells the frontend immediately (so the mic stops and the UI reflects
+// reality right away) while giving Gemini a bounded window to speak the
+// farewell turn; recvLoop signals farewellDone as soon as that turn
+// completes, and a timeout guards against it never doing so.
+func (rl *liveRelay) endGracefully(ctx context.Context, cancel context.CancelFunc) {
+	rl.conn.WriteJSON(newWSMessage(wsTypeOutOfCredits, nil))
+
+	rl.awaitingFarewell.Store(true)
+	if err := rl.getLive().SendText(live.OutOfCreditsFarewellPrompt); err != nil {
+		log.Printf("failed to send out-of-credits farewell prompt: %v", err)
+		cancel()
+		return
+	}
+
+	select {
+	case <-rl.farewellDone:
+	case <-time.After(farewellTimeout):
+	case <-ctx.Done():
+	}
+	cancel()
+}
+
+// billTick converts whatever usage accumulated since the last tick into a
+// credit deduction (after first consuming any remaining free trial time),
+// and returns true if the account is now out of credits and the session
+// should end.
+//
+// The free trial is spent in plain wall-clock seconds of connection time,
+// independent of how much audio actually flowed - simplest to reason about
+// ("5 minutes free") and errs generous at the boundary tick rather than
+// stingy. Once it's exhausted, real measured audio/text usage from Gemini's
+// official per-second/per-token rates takes over.
+func (rl *liveRelay) billTick(ctx context.Context) bool {
+	now := time.Now()
+
+	rl.billingMu.Lock()
+	elapsed := now.Sub(rl.lastBillTime).Seconds()
+	rl.lastBillTime = now
+	userBytes := rl.userAudioBytesPending
+	theresaBytes := rl.theresaAudioBytesPending
+	textInChars := rl.textInCharsPending
+	textOutChars := rl.textOutCharsPending
+	rl.userAudioBytesPending = 0
+	rl.theresaAudioBytesPending = 0
+	rl.textInCharsPending = 0
+	rl.textOutCharsPending = 0
+	rl.billingMu.Unlock()
+
+	if elapsed <= 0 {
+		return false
+	}
+
+	// 16-bit PCM: 2 bytes/sample. Input capture is 16kHz mono, output
+	// playback is 24kHz mono (see lib/audio.ts on the frontend).
+	userSeconds := float64(userBytes) / (16000 * 2)
+	theresaSeconds := float64(theresaBytes) / (24000 * 2)
+
+	billableFraction := 1.0
+	if rl.freeTrialSecondsRemaining > 0 {
+		if elapsed <= float64(rl.freeTrialSecondsRemaining) {
+			rl.freeTrialSecondsRemaining -= int(elapsed)
+			rl.saveFreeTrialRemaining()
+			rl.conn.WriteJSON(creditBalanceMessage(rl.creditBalanceKobo, rl.freeTrialSecondsRemaining))
+			return false
+		}
+		consumedFromTrial := float64(rl.freeTrialSecondsRemaining)
+		billableFraction = (elapsed - consumedFromTrial) / elapsed
+		rl.freeTrialSecondsRemaining = 0
+		rl.saveFreeTrialRemaining()
+	}
+
+	billableUserSeconds := userSeconds * billableFraction
+	billableTheresaSeconds := theresaSeconds * billableFraction
+	textInTokens := billing.EstimateTextTokens(int(float64(textInChars) * billableFraction))
+	textOutTokens := billing.EstimateTextTokens(int(float64(textOutChars) * billableFraction))
+
+	chargeKobo := billing.ChargeKobo(billableUserSeconds, billableTheresaSeconds, textInTokens, textOutTokens, rl.usdToNGNRate)
+	if chargeKobo <= 0 {
+		return false
+	}
+
+	result, err := billing.Deduct(ctx, rl.db, rl.userID, chargeKobo, rl.session.ID, map[string]any{
+		"user_audio_seconds":    billableUserSeconds,
+		"theresa_audio_seconds": billableTheresaSeconds,
+		"text_in_tokens":        textInTokens,
+		"text_out_tokens":       textOutTokens,
+	})
+	if err != nil {
+		log.Printf("credit deduction failed: %v", err)
+		return false
+	}
+
+	rl.creditBalanceKobo = result.RemainingKobo
+	rl.conn.WriteJSON(creditBalanceMessage(result.RemainingKobo, rl.freeTrialSecondsRemaining))
+
+	for _, pct := range result.CrossedThresholds {
+		rl.notifyLowCredits(pct, result.RemainingKobo)
+	}
+
+	return result.OutOfCredits
+}
+
+func (rl *liveRelay) saveFreeTrialRemaining() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rl.db.Collection("users").UpdateOne(ctx, bson.M{"_id": rl.userID}, bson.M{
+		"$set": bson.M{"free_trial_seconds_remaining": rl.freeTrialSecondsRemaining},
+	})
+}
+
+// notifyLowCredits sends the "you've used N% of your credits" email for a
+// newly-crossed threshold. Fire-and-forget on a detached context, same
+// spirit as the Mongo writes elsewhere in this file - a failed notification
+// email isn't worth interrupting a live voice session over.
+func (rl *liveRelay) notifyLowCredits(percent int, remainingKobo int64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var user models.User
+	if err := rl.db.Collection("users").FindOne(ctx, bson.M{"_id": rl.userID}).Decode(&user); err != nil {
+		return
+	}
+
+	remainingNaira := float64(remainingKobo) / 100
+	if err := rl.email.SendLowCreditsEmail(ctx, user.Email, user.Name, percent, remainingNaira); err != nil {
+		log.Printf("low credits email failed: %v", err)
+	}
 }

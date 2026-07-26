@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	"theresa/backend/internal/auth"
+	"theresa/backend/internal/billing"
 	"theresa/backend/internal/config"
 	"theresa/backend/internal/email"
 	"theresa/backend/internal/models"
@@ -85,6 +86,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		VerificationTokenHash:      tokenHash,
 		VerificationTokenExpiresAt: time.Now().Add(auth.VerificationTokenTTL),
 		CreatedAt:                  time.Now(),
+		FreeTrialSecondsRemaining:  billing.FreeTrialSeconds,
 	}
 
 	ctx := r.Context()

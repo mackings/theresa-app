@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"theresa/backend/internal/billing"
 	"theresa/backend/internal/config"
 	"theresa/backend/internal/db"
 	"theresa/backend/internal/email"
@@ -24,6 +25,9 @@ func main() {
 
 	if err := db.EnsureIndexes(ctx, database); err != nil {
 		log.Fatalf("failed to ensure indexes: %v", err)
+	}
+	if err := db.BackfillFreeTrial(ctx, database, billing.FreeTrialSeconds); err != nil {
+		log.Fatalf("failed to backfill free trial: %v", err)
 	}
 
 	emailClient := email.NewClient(cfg.ResendAPIKey, cfg.ResendFromEmail)
