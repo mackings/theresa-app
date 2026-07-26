@@ -129,7 +129,13 @@ func (h *PaymentHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 
 	signature := r.Header.Get("flutterwave-signature")
 	if !payments.VerifyWebhookSignature(body, signature, h.cfg.FlutterwaveWebhookSecretKey) {
-		log.Printf("webhook signature mismatch, rejecting")
+		// TEMP: verbose diagnostic logging while root-causing a real signature
+		// mismatch in production - remove once resolved. Logs no secrets: the
+		// received/expected values here are one-way HMAC outputs tied to this
+		// specific request body, not the secret hash itself.
+		log.Printf("webhook signature mismatch - headers: %v", r.Header)
+		log.Printf("webhook signature mismatch - body (%d bytes): %s", len(body), string(body))
+		log.Printf("webhook signature mismatch - received=%q expected=%q", signature, payments.ExpectedWebhookSignature(body, h.cfg.FlutterwaveWebhookSecretKey))
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
