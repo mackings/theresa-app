@@ -28,6 +28,12 @@ type Config struct {
 	GeminiTextModel    string
 	GeminiLiveModel    string
 	MaxUploadSizeBytes int64
+
+	FlutterwavePublicKey        string
+	FlutterwaveSecretKey        string
+	FlutterwaveEncryptionKey    string
+	FlutterwaveWebhookSecretKey string
+	USDToNGNRate                float64
 }
 
 func Load() Config {
@@ -53,6 +59,16 @@ func Load() Config {
 		GeminiTextModel:    getEnv("GEMINI_TEXT_MODEL", "gemini-2.5-flash"),
 		GeminiLiveModel:    getEnv("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview"),
 		MaxUploadSizeBytes: getEnvInt64("MAX_UPLOAD_SIZE_BYTES", 20*1024*1024),
+
+		// Not fail-fast, same as GeminiLiveModel above: the rest of the app
+		// should still boot and serve text/voice teaching even if billing
+		// isn't configured yet. Payment endpoints check for these at
+		// call-time instead and fail clearly there if missing.
+		FlutterwavePublicKey:        os.Getenv("FLUTTERWAVE_PUBLIC_KEY"),
+		FlutterwaveSecretKey:        os.Getenv("FLUTTERWAVE_SECRET_KEY"),
+		FlutterwaveEncryptionKey:    os.Getenv("FLUTTERWAVE_ENCRYPTION_KEY"),
+		FlutterwaveWebhookSecretKey: os.Getenv("FLUTTERWAVE_WEBHOOK_SECRET_HASH"),
+		USDToNGNRate:                getEnvFloat64("USD_TO_NGN_RATE", 1380.0),
 	}
 
 	var missing []string
@@ -91,6 +107,18 @@ func getEnvInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func getEnvFloat64(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return fallback
 	}

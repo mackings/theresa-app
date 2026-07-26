@@ -9,6 +9,8 @@ export interface LiveSessionHandlers {
   onReconnecting?: () => void;
   onReconnected?: () => void;
   onClose?: () => void;
+  onCreditBalance?: (balanceKobo: number, freeTrialSecondsRemaining: number) => void;
+  onOutOfCredits?: () => void;
 }
 
 export interface LiveSessionConnection {
@@ -37,6 +39,13 @@ export function connectLiveSession(
 ): LiveSessionConnection {
   let ws: WebSocket;
   let intentionalClose = false;
+  // Set when the server tells us the session is over on purpose (out of
+  // credits) - the socket closing right after that is expected, not a
+  // network hiccup, so the outer reconnect loop must not fire. Without this,
+  // every reconnect attempt succeeds in opening a socket (the backend accepts
+  // the upgrade before immediately closing it again), which resets
+  // reconnectAttempt back to 0 on each onopen and loops forever.
+  let sessionEndedByServer = false;
   let reconnectAttempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -72,6 +81,18 @@ export function connectLiveSession(
         case "reconnected":
           handlers.onReconnected?.();
           break;
+        case "credit_balance": {
+          const { balance_kobo, free_trial_seconds_remaining } = msg.payload as {
+            balance_kobo: number;
+            free_trial_seconds_remaining: number;
+          };
+          handlers.onCreditBalance?.(balance_kobo, free_trial_seconds_remaining);
+          break;
+        }
+        case "out_of_credits":
+          sessionEndedByServer = true;
+          handlers.onOutOfCredits?.();
+          break;
       }
     };
 
@@ -83,7 +104,7 @@ export function connectLiveSession(
     };
 
     socket.onclose = () => {
-      if (intentionalClose) {
+      if (intentionalClose || sessionEndedByServer) {
         handlers.onClose?.();
         return;
       }

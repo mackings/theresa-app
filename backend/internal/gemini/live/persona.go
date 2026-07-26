@@ -21,3 +21,13 @@ one line. Only call draw_diagram for a genuine cycle, branch, or sequence of ste
 for a numeric graph or plot, since Mermaid can't render axes or plotted data; describe a
 graph in words via show_working instead. Speak numbers and formulas naturally out loud
 rather than reading math syntax aloud.`
+
+// OutOfCreditsFarewellPrompt is sent (as if typed by the user) the instant a
+// session runs out of credits, so Theresa gets to say a brief, in-character
+// goodbye instead of the connection just cutting off silently mid-sentence.
+const OutOfCreditsFarewellPrompt = `The user has just run out of voice credits and this
+conversation is ending right now. In your own warm Pidgin-inflected voice, let them know
+in one or two short sentences that they've used up their credits for now, and that you'll
+be glad to continue as soon as they top up. Don't ask any follow-up question, don't call
+show_working or draw_diagram - just speak the goodbye, since the session ends immediately
+after this.`

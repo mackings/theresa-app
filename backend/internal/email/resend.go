@@ -36,6 +36,25 @@ func (c *Client) SendVerificationEmail(ctx context.Context, toEmail, toName, ver
 	return err
 }
 
+// SendLowCreditsEmail notifies a user that they've crossed a usage
+// threshold (50/75/95% of their current credit cycle) - a nudge to top up
+// before they hit zero mid-conversation, not just a silent cutoff.
+func (c *Client) SendLowCreditsEmail(ctx context.Context, toEmail, toName string, percentUsed int, remainingNaira float64) error {
+	html := fmt.Sprintf(`
+		<p>Hi %s,</p>
+		<p>You've used %d%% of your Theresa voice credits - about ₦%.2f left.</p>
+		<p>Top up anytime to keep your voice sessions running without interruption.</p>
+	`, toName, percentUsed, remainingNaira)
+
+	_, err := c.client.Emails.SendWithContext(ctx, &resend.SendEmailRequest{
+		From:    c.fromEmail,
+		To:      []string{toEmail},
+		Subject: fmt.Sprintf("You've used %d%% of your Theresa credits", percentUsed),
+		Html:    html,
+	})
+	return err
+}
+
 func (c *Client) SendPasswordResetEmail(ctx context.Context, toEmail, toName, resetURL string) error {
 	html := fmt.Sprintf(`
 		<p>Hi %s,</p>

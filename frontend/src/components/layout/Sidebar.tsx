@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { MessageSquarePlus, Mic, MessageSquare, PanelLeftClose } from "lucide-react";
+import { MessageSquarePlus, Mic, MessageSquare, PanelLeftClose, Plus, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { apiFetch } from "@/lib/api";
 import { createSession } from "@/lib/sessions";
+import { getCreditBalance, formatNaira } from "@/lib/credits";
 import { TutorSession } from "@/types/board";
 
 const MOBILE_BREAKPOINT = 1024;
@@ -46,6 +47,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   const [sessions, setSessions] = useState<TutorSession[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   const [creating, setCreating] = useState(false);
+  const [balanceKobo, setBalanceKobo] = useState<number | null>(null);
+  const [freeTrialSecondsLeft, setFreeTrialSecondsLeft] = useState<number | null>(null);
 
   useEffect(() => {
     apiFetch<TutorSession[]>("/api/sessions")
@@ -53,6 +56,12 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       .catch(() => {});
     apiFetch<Me>("/api/auth/me")
       .then(setMe)
+      .catch(() => {});
+    getCreditBalance()
+      .then((b) => {
+        setBalanceKobo(b.balance_kobo);
+        setFreeTrialSecondsLeft(b.free_trial_seconds_remaining);
+      })
       .catch(() => {});
   }, []);
 
@@ -153,6 +162,28 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           </div>
         ))}
       </nav>
+
+      {balanceKobo !== null && (
+        <button
+          type="button"
+          onClick={() => {
+            closeOnMobile();
+            router.push("/credits");
+          }}
+          className="flex items-center justify-between border-t border-[var(--color-border)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
+        >
+          <span className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+            <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+            {freeTrialSecondsLeft && freeTrialSecondsLeft > 0
+              ? `${Math.ceil(freeTrialSecondsLeft / 60)} min free trial left`
+              : formatNaira(balanceKobo)}
+          </span>
+          <span className="flex items-center gap-1 rounded-[var(--radius-full)] bg-[var(--color-accent)]/10 px-2 py-1 text-xs font-medium text-[var(--color-accent)]">
+            <Plus className="h-3 w-3" />
+            Add
+          </span>
+        </button>
+      )}
 
       <div className="flex items-center justify-between border-t border-[var(--color-border)] px-3 py-3">
         <div className="flex min-w-0 items-center gap-2 text-sm text-[var(--color-text-primary)]">

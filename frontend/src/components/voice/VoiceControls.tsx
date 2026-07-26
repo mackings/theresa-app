@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AlertCircle, Mic, MessageCircle, MicOff, Send, Sparkles, WifiOff, X } from "lucide-react";
 import { connectLiveSession, LiveSessionConnection } from "@/lib/ws-client";
 import { startMicCapture, MicCapture, PlaybackQueue } from "@/lib/audio";
@@ -9,6 +10,7 @@ import { BoardAudioSync } from "@/lib/board/audioSync";
 import { SpeakingOrb, OrbState } from "@/components/voice/SpeakingOrb";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
+import { formatNaira } from "@/lib/credits";
 import { BoardContentBlock } from "@/types/board";
 
 export function VoiceControls({
@@ -27,6 +29,9 @@ export function VoiceControls({
   const [textInput, setTextInput] = useState("");
   const [reconnecting, setReconnecting] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
+  const [balanceKobo, setBalanceKobo] = useState<number | null>(null);
+  const [freeTrialSecondsLeft, setFreeTrialSecondsLeft] = useState<number | null>(null);
+  const [outOfCredits, setOutOfCredits] = useState(false);
 
   const connectionRef = useRef<LiveSessionConnection | null>(null);
   const micRef = useRef<MicCapture | null>(null);
@@ -60,6 +65,16 @@ export function VoiceControls({
       onError: (message) => setError(message),
       onReconnecting: () => setReconnecting(true),
       onReconnected: () => setReconnecting(false),
+      onCreditBalance: (kobo, freeTrialSeconds) => {
+        setBalanceKobo(kobo);
+        setFreeTrialSecondsLeft(freeTrialSeconds);
+      },
+      onOutOfCredits: () => {
+        setOutOfCredits(true);
+        micRef.current?.stop();
+        micRef.current = null;
+        setMicOn(false);
+      },
     });
     connectionRef.current = connection;
 
@@ -73,6 +88,7 @@ export function VoiceControls({
   }, [sessionId]);
 
   async function toggleMic() {
+    if (outOfCredits) return;
     if (micOn) {
       micRef.current?.stop();
       micRef.current = null;
@@ -120,8 +136,25 @@ export function VoiceControls({
           Theresa
         </Pill>
         <p className="max-w-xs text-center text-base font-semibold text-[var(--color-text-primary)] sm:text-xl">
-          {status}
+          {outOfCredits ? "Out of voice credits" : status}
         </p>
+        {!outOfCredits && (freeTrialSecondsLeft || balanceKobo !== null) && (
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            {freeTrialSecondsLeft && freeTrialSecondsLeft > 0
+              ? `${Math.ceil(freeTrialSecondsLeft / 60)} min free trial left`
+              : balanceKobo !== null
+                ? `${formatNaira(balanceKobo)} remaining`
+                : null}
+          </p>
+        )}
+        {outOfCredits && (
+          <Link
+            href="/credits"
+            className="rounded-[var(--radius-full)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-accent-foreground)] shadow-[var(--shadow-xs)] transition-opacity hover:opacity-90"
+          >
+            Add credits to keep going
+          </Link>
+        )}
       </div>
 
       <div className="p-4">
