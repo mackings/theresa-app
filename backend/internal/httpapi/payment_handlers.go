@@ -202,5 +202,25 @@ func (h *PaymentHandler) Balance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"balance_kobo":                 user.CreditBalanceKobo,
 		"free_trial_seconds_remaining": user.FreeTrialSecondsRemaining,
+		"percent_remaining":            percentRemaining(user.CreditBalanceKobo, user.CreditCycleStartKobo),
 	})
+}
+
+// percentRemaining is how much of the current top-up cycle is left, for
+// surfaces that show usage without ever displaying a raw naira figure (the
+// sidebar's persistent indicator) - /credits and the payment callback page
+// still show the real balance directly, since showing an amount is the
+// whole point there.
+func percentRemaining(balanceKobo, cycleStartKobo int64) int {
+	if cycleStartKobo <= 0 {
+		return 0
+	}
+	pct := int(float64(balanceKobo) / float64(cycleStartKobo) * 100)
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
 }

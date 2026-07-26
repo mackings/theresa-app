@@ -6,9 +6,11 @@ import { MessageSquarePlus, Mic, MessageSquare, PanelLeftClose, Plus, Sparkles }
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { apiFetch } from "@/lib/api";
 import { createSession } from "@/lib/sessions";
-import { getCreditBalance, formatNaira } from "@/lib/credits";
+import { getCreditBalance } from "@/lib/credits";
+import { isActiveVoiceSession } from "@/lib/activeVoiceSession";
 import { TutorSession } from "@/types/board";
 
 const MOBILE_BREAKPOINT = 1024;
@@ -47,8 +49,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   const [sessions, setSessions] = useState<TutorSession[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   const [creating, setCreating] = useState(false);
-  const [balanceKobo, setBalanceKobo] = useState<number | null>(null);
   const [freeTrialSecondsLeft, setFreeTrialSecondsLeft] = useState<number | null>(null);
+  const [percentRemaining, setPercentRemaining] = useState<number | null>(null);
+  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
   useEffect(() => {
     apiFetch<TutorSession[]>("/api/sessions")
@@ -59,14 +62,25 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       .catch(() => {});
     getCreditBalance()
       .then((b) => {
-        setBalanceKobo(b.balance_kobo);
         setFreeTrialSecondsLeft(b.free_trial_seconds_remaining);
+        setPercentRemaining(b.percent_remaining);
       })
       .catch(() => {});
   }, []);
 
   function closeOnMobile() {
     if (window.innerWidth < MOBILE_BREAKPOINT) onClose?.();
+  }
+
+  // Navigating away from an active voice session drops the call - if one's
+  // in progress, confirm first instead of silently ending it out from under
+  // the user the moment they click anything else in the sidebar.
+  function guardedNavigate(action: () => void) {
+    if (isActiveVoiceSession()) {
+      setPendingNav(() => action);
+      return;
+    }
+    action();
   }
 
   async function handleCreateSession(mode: "text" | "voice") {
@@ -111,7 +125,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       <div className="space-y-1.5 px-3">
         <Button
           variant="secondary"
-          onClick={() => handleCreateSession("text")}
+          onClick={() => guardedNavigate(() => handleCreateSession("text"))}
           disabled={creating}
           icon={<MessageSquarePlus className="h-4 w-4" />}
           className="w-full justify-start"
@@ -120,7 +134,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         </Button>
         <Button
           variant="secondary"
-          onClick={() => handleCreateSession("voice")}
+          onClick={() => guardedNavigate(() => handleCreateSession("voice"))}
           disabled={creating}
           icon={<Mic className="h-4 w-4" />}
           className="w-full justify-start"
@@ -143,10 +157,12 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                   <button
                     key={session.id}
                     type="button"
-                    onClick={() => {
-                      closeOnMobile();
-                      router.push(`/session/${session.id}`);
-                    }}
+                    onClick={() =>
+                      guardedNavigate(() => {
+                        closeOnMobile();
+                        router.push(`/session/${session.id}`);
+                      })
+                    }
                     className={`flex w-full items-center gap-2 truncate rounded-[var(--radius-md)] px-2 py-2 text-left text-sm transition-colors ${
                       active
                         ? "bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]"
@@ -163,20 +179,22 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         ))}
       </nav>
 
-      {balanceKobo !== null && (
+      {percentRemaining !== null && (
         <button
           type="button"
-          onClick={() => {
-            closeOnMobile();
-            router.push("/credits");
-          }}
+          onClick={() =>
+            guardedNavigate(() => {
+              closeOnMobile();
+              router.push("/credits");
+            })
+          }
           className="flex items-center justify-between border-t border-[var(--color-border)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
         >
           <span className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
             <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />
             {freeTrialSecondsLeft && freeTrialSecondsLeft > 0
               ? `${Math.ceil(freeTrialSecondsLeft / 60)} min free trial left`
-              : formatNaira(balanceKobo)}
+              : `${percentRemaining}% usage remaining`}
           </span>
           <span className="flex items-center gap-1 rounded-[var(--radius-full)] bg-[var(--color-accent)]/10 px-2 py-1 text-xs font-medium text-[var(--color-accent)]">
             <Plus className="h-3 w-3" />
@@ -192,6 +210,20 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         </div>
         <ThemeToggle />
       </div>
+
+      <ConfirmDialog
+        open={pendingNav !== null}
+        title="End this voice session?"
+        description="You're in an active voice conversation - leaving now will end the call."
+        confirmLabel="End session"
+        cancelLabel="Stay"
+        onConfirm={() => {
+          const action = pendingNav;
+          setPendingNav(null);
+          action?.();
+        }}
+        onCancel={() => setPendingNav(null)}
+      />
     </aside>
   );
 }

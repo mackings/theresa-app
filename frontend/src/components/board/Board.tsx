@@ -23,10 +23,16 @@ export function Board({
   events,
   audioSync,
   pending,
+  instantUpToSeq = 0,
 }: {
   events: SessionEvent[];
   audioSync?: BoardAudioSync;
   pending?: boolean;
+  // Events with seq below this were already taught before this visit -
+  // reopening a session should show that history instantly, not replay the
+  // whole typewriter sequence again. Only genuinely new events (seq at or
+  // above this) get the live reveal animation.
+  instantUpToSeq?: number;
 }) {
   const boardEvents = useMemo(
     () => events.filter(isRenderableBoardEvent).sort((a, b) => a.seq - b.seq),
@@ -57,13 +63,27 @@ export function Board({
       return;
     }
 
-    const pending = boardEvents.filter((e) => e.seq > cursorSeqRef.current);
-    if (pending.length === 0) return;
+    const pendingEvents = boardEvents.filter((e) => e.seq > cursorSeqRef.current);
+    if (pendingEvents.length === 0) return;
 
-    const next = pending[0];
-    activeSeqRef.current = next.seq;
-    setActiveSeq(next.seq);
-    setVisibleEvents((prev) => [...prev, next]);
+    // Everything already taught before this visit lands in one batch -
+    // reveal it all instantly instead of one at a time. Anything genuinely
+    // new (this visit) still goes through the normal reveal-then-advance
+    // cycle below.
+    const historical = pendingEvents.filter((e) => e.seq < instantUpToSeq);
+    const live = pendingEvents.filter((e) => e.seq >= instantUpToSeq);
+
+    if (historical.length > 0) {
+      cursorSeqRef.current = historical[historical.length - 1].seq;
+      setVisibleEvents((prev) => [...prev, ...historical]);
+    }
+
+    if (live.length > 0) {
+      const next = live[0];
+      activeSeqRef.current = next.seq;
+      setActiveSeq(next.seq);
+      setVisibleEvents((prev) => [...prev, next]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardEventsKey]);
 
@@ -143,6 +163,7 @@ export function Board({
                   title={board.title}
                   lines={board.lines ?? []}
                   onComplete={isActive ? handleActiveComplete : noop}
+                  instant={event.seq < instantUpToSeq}
                 />
               );
             })}

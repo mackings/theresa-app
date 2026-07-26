@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api";
 export interface CreditBalance {
   balance_kobo: number;
   free_trial_seconds_remaining: number;
+  percent_remaining: number;
 }
 
 export function getCreditBalance(): Promise<CreditBalance> {

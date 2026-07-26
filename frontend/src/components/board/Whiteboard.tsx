@@ -30,12 +30,14 @@ export function Whiteboard({
   title,
   lines,
   onComplete,
+  instant,
 }: {
   title?: string;
   lines: string[];
   onComplete: () => void;
+  instant?: boolean;
 }) {
-  const { visibleLines, done } = useTypewriter(lines, onComplete);
+  const { visibleLines, done } = useTypewriter(lines, onComplete, instant);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // As the typewriter reveals more than fits in the visible board, keep the
