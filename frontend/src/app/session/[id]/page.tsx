@@ -19,6 +19,7 @@ export default function SessionPage() {
   const [mode, setMode] = useState<"text" | "voice">("text");
   const [switchingMode, setSwitchingMode] = useState(false);
   const [events, setEvents] = useState<SessionEvent[]>([]);
+  const [initialEventCount, setInitialEventCount] = useState(0);
   const [documentId, setDocumentId] = useState<string | undefined>(undefined);
   const [solving, setSolving] = useState(false);
   const nextSeqRef = useRef(0);
@@ -31,6 +32,7 @@ export default function SessionPage() {
         setMode(s.mode);
         const initialEvents = s.events ?? [];
         setEvents(initialEvents);
+        setInitialEventCount(initialEvents.length);
         nextSeqRef.current = initialEvents.length;
 
         // The dashboard's composer/upload flow hands off a message here
@@ -98,6 +100,7 @@ export default function SessionPage() {
             events={events}
             audioSync={mode === "voice" ? audioSync : undefined}
             pending={mode === "text" && solving}
+            instantUpToSeq={initialEventCount}
           />
         </div>
         <div className="flex min-h-0 flex-1 flex-col lg:w-96 lg:flex-none lg:border-l lg:border-[var(--color-border)]">

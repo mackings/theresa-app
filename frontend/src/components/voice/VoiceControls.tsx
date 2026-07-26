@@ -11,6 +11,7 @@ import { SpeakingOrb, OrbState } from "@/components/voice/SpeakingOrb";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { BoardContentBlock } from "@/types/board";
+import { setActiveVoiceSession } from "@/lib/activeVoiceSession";
 
 const LOW_CREDITS_TOAST_MS = 6000;
 
@@ -50,6 +51,7 @@ export function VoiceControls({
       playback.enqueue(pcm16);
     });
     audioSync.start();
+    setActiveVoiceSession(true);
 
     const connection = connectLiveSession(sessionId, {
       onAudioChunk: (pcm16) => {
@@ -67,6 +69,7 @@ export function VoiceControls({
       onReconnected: () => setReconnecting(false),
       onOutOfCredits: () => {
         setOutOfCredits(true);
+        setActiveVoiceSession(false);
         micRef.current?.stop();
         micRef.current = null;
         setMicOn(false);
@@ -76,6 +79,7 @@ export function VoiceControls({
     connectionRef.current = connection;
 
     return () => {
+      setActiveVoiceSession(false);
       connection.close();
       playback.close();
       audioSync.stop();

@@ -19,7 +19,12 @@ export interface TypewriterState {
 // itself). onComplete is stored in a ref and never appears in the reveal
 // effect's dependency array, so an unrelated parent re-render can't restart
 // or interrupt an in-progress reveal.
-export function useTypewriter(lines: string[], onComplete: () => void): TypewriterState {
+//
+// `instant` skips the animation entirely and shows fully-revealed content
+// from the first paint - for board content that was already taught before
+// this visit (reopening a session shouldn't replay the whole typewriter
+// sequence for material the user already saw).
+export function useTypewriter(lines: string[], onComplete: () => void, instant = false): TypewriterState {
   const parsedLinesRef = useRef<Segment[][]>(undefined);
   if (parsedLinesRef.current === undefined) {
     parsedLinesRef.current = lines.map(parseLine);
@@ -30,12 +35,21 @@ export function useTypewriter(lines: string[], onComplete: () => void): Typewrit
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  const [state, setState] = useState<TypewriterState>({
-    visibleLines: [],
-    done: lines.length === 0,
-  });
+  // Computed directly from `lines` (not read back from parsedLinesRef) so
+  // this initial value never reads a ref during render - only the effect
+  // below (which runs after render) touches parsedLinesRef.current again.
+  const [state, setState] = useState<TypewriterState>(
+    instant
+      ? { visibleLines: lines.map(parseLine), done: true }
+      : { visibleLines: [], done: lines.length === 0 }
+  );
 
   useEffect(() => {
+    if (instant) {
+      onCompleteRef.current();
+      return;
+    }
+
     const parsedLines = parsedLinesRef.current!;
 
     if (parsedLines.length === 0) {
@@ -126,6 +140,7 @@ export function useTypewriter(lines: string[], onComplete: () => void): Typewrit
       cancelled = true;
       clearTimeout(timeoutId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return state;
