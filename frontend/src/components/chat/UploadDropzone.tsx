@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AlertCircle, FileCheck2, Loader2, RotateCcw, Upload } from "lucide-react";
-import { apiFetch, ApiError } from "@/lib/api";
 import { IconButton } from "@/components/ui/Button";
+import { useDocumentUpload } from "@/lib/useDocumentUpload";
 import { DocumentMeta } from "@/types/board";
 
 export function UploadDropzone({
@@ -12,62 +12,8 @@ export function UploadDropzone({
   onDocumentReady: (doc: DocumentMeta) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [doc, setDoc] = useState<DocumentMeta | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const cancelledRef = useRef(false);
-
-  useEffect(() => {
-    cancelledRef.current = false;
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, []);
-
-  async function pollUntilDone(id: string) {
-    while (!cancelledRef.current) {
-      await new Promise((r) => setTimeout(r, 2000));
-      if (cancelledRef.current) return;
-
-      const updated = await apiFetch<DocumentMeta>(`/api/documents/${id}`);
-      if (cancelledRef.current) return;
-
-      setDoc(updated);
-      if (updated.status === "understood") {
-        onDocumentReady(updated);
-        return;
-      }
-      if (updated.status === "failed") {
-        setError(updated.error_message ?? "failed to process document");
-        return;
-      }
-    }
-  }
-
-  async function onFileSelected(file: File) {
-    setError(null);
-    setDoc(null);
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const uploaded = await apiFetch<DocumentMeta>("/api/documents", {
-        method: "POST",
-        body: formData,
-      });
-      setDoc(uploaded);
-      await pollUntilDone(uploaded.id);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "upload failed");
-    }
-  }
-
-  function reset() {
-    setDoc(null);
-    setError(null);
-    if (inputRef.current) inputRef.current.value = "";
-  }
+  const { doc, error, onFileSelected, reset } = useDocumentUpload(onDocumentReady);
 
   return (
     <div className="border-t border-[var(--color-border)] p-3">

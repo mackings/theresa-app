@@ -6,7 +6,6 @@ import { apiFetch, streamSessionMessage } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { Board } from "@/components/board/Board";
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import { UploadDropzone } from "@/components/chat/UploadDropzone";
 import { VoiceControls } from "@/components/voice/VoiceControls";
 import { ModeSwitch } from "@/components/session/ModeSwitch";
 import { BoardAudioSync } from "@/lib/board/audioSync";
@@ -119,18 +118,16 @@ export default function SessionPage() {
               />
             </div>
           ) : (
-            <>
-              <UploadDropzone onDocumentReady={(doc: DocumentMeta) => setDocumentId(doc.id)} />
-              <div className="flex-1 overflow-hidden">
-                <ChatPanel
-                  sessionId={session.id}
-                  events={events}
-                  documentId={documentId}
-                  onNewEvents={(newEvents) => setEvents((prev) => [...prev, ...newEvents])}
-                  onSolvingChange={setSolving}
-                />
-              </div>
-            </>
+            <div className="flex-1 overflow-hidden">
+              <ChatPanel
+                sessionId={session.id}
+                events={events}
+                documentId={documentId}
+                onDocumentReady={(doc: DocumentMeta) => setDocumentId(doc.id)}
+                onNewEvents={(newEvents) => setEvents((prev) => [...prev, ...newEvents])}
+                onSolvingChange={setSolving}
+              />
+            </div>
           )}
         </div>
       </div>
