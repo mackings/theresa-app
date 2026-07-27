@@ -171,6 +171,28 @@ func VerifyWebhookSignature(body []byte, signatureHeader, secretHash string) boo
 	return hmac.Equal([]byte(expected), []byte(signatureHeader))
 }
 
+// VerifyWebhookAuth accepts either of Flutterwave's two real-world webhook
+// authentication schemes, since production traffic has been observed using
+// the classic one even for payments initiated through the v3 API (contrary
+// to the docs, which describe only the newer scheme for v3):
+//   - newer: HMAC-SHA256 of the raw body in the "flutterwave-signature"
+//     header (VerifyWebhookSignature above).
+//   - classic: the secret hash itself, verbatim, echoed back in the
+//     "verif-hash" header - no hashing, just a direct equality check.
+//
+// Accepted if either header is present and matches; both are still only a
+// fast pre-filter, never a substitute for the independent VerifyTransaction
+// call before crediting anything.
+func VerifyWebhookAuth(body []byte, flutterwaveSignature, verifHash, secretHash string) bool {
+	if flutterwaveSignature != "" && VerifyWebhookSignature(body, flutterwaveSignature, secretHash) {
+		return true
+	}
+	if verifHash != "" && secretHash != "" && hmac.Equal([]byte(verifHash), []byte(secretHash)) {
+		return true
+	}
+	return false
+}
+
 // ExpectedWebhookSignature computes the HMAC-SHA256 hex digest a valid
 // webhook for this exact body should carry - exported separately so a
 // rejected webhook can log what we computed alongside what was received,
