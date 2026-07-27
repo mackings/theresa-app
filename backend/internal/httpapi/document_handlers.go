@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -29,14 +30,19 @@ type DocumentHandler struct {
 	cfg     config.Config
 	storage *storage.Store
 	gemini  *gemini.Client
+
+	// Each upload triggers real Gemini file-understanding work - throttled
+	// per-user to bound cost from a scripted upload loop.
+	uploadLimiter *auth.RateLimiter
 }
 
 func NewDocumentHandler(db *mongo.Database, cfg config.Config, geminiClient *gemini.Client) *DocumentHandler {
 	return &DocumentHandler{
-		db:      db,
-		cfg:     cfg,
-		storage: storage.NewStore(db),
-		gemini:  geminiClient,
+		db:            db,
+		cfg:           cfg,
+		storage:       storage.NewStore(db),
+		gemini:        geminiClient,
+		uploadLimiter: auth.NewRateLimiter(10, time.Hour),
 	}
 }
 
@@ -53,6 +59,11 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	ownerID, err := bson.ObjectIDFromHex(userIDHex)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if !h.uploadLimiter.Allow(userIDHex) {
+		writeError(w, http.StatusTooManyRequests, "too many uploads, please try again later")
 		return
 	}
 
@@ -119,9 +130,13 @@ func (h *DocumentHandler) processDocument(docID bson.ObjectID, buf []byte, mimeT
 	now := time.Now()
 	fileURI, summary, err := h.gemini.UnderstandDocument(ctx, bytes.NewReader(buf), mimeType, filename)
 	if err != nil {
+		// The real error (which can include raw Gemini SDK/API internals)
+		// is logged server-side only - the document's own owner sees a
+		// generic, actionable message instead, not implementation detail.
+		log.Printf("document %s processing failed: %v", docID.Hex(), err)
 		h.documents().UpdateOne(ctx, bson.M{"_id": docID}, bson.M{"$set": bson.M{
 			"status":        "failed",
-			"error_message": err.Error(),
+			"error_message": "We couldn't process this document. Please try again or use a different file.",
 			"processed_at":  now,
 		}})
 		return

@@ -8,14 +8,21 @@ import (
 )
 
 type Claims struct {
-	UserID string `json:"user_id"`
+	UserID       string `json:"user_id"`
+	TokenVersion int    `json:"token_version"`
 	jwt.RegisteredClaims
 }
 
-func MintToken(userID string, secret string, ttl time.Duration) (string, error) {
+// MintToken embeds the user's current TokenVersion in the signed token -
+// ParseToken's caller (RequireAuth) compares this against the user's live
+// value on every request, so bumping TokenVersion in the database (logout,
+// password reset) revokes this token immediately, before its natural
+// expiry, without needing a separate blocklist.
+func MintToken(userID string, tokenVersion int, secret string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID: userID,
+		UserID:       userID,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),

@@ -17,6 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"google.golang.org/genai"
 
+	"theresa/backend/internal/auth"
 	"theresa/backend/internal/billing"
 	"theresa/backend/internal/config"
 	"theresa/backend/internal/email"
@@ -58,22 +59,47 @@ func connectWithFreshFallback(ctx context.Context, client *gemini.Client, model,
 
 var reconnectBackoff = []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond, 3 * time.Second}
 
-var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
 type LiveHandler struct {
-	db     *mongo.Database
-	cfg    config.Config
-	gemini *gemini.Client
-	email  *email.Client
+	db       *mongo.Database
+	cfg      config.Config
+	gemini   *gemini.Client
+	email    *email.Client
+	upgrader websocket.Upgrader
+
+	// Each connection opens a real Gemini Live session - throttled per-user
+	// to bound cost/abuse from a scripted reconnect loop. Generous enough
+	// that normal use (including M5's automatic reconnect-on-drop) never
+	// hits it.
+	connectLimiter *auth.RateLimiter
 }
 
 func NewLiveHandler(db *mongo.Database, cfg config.Config, geminiClient *gemini.Client, emailClient *email.Client) *LiveHandler {
-	return &LiveHandler{db: db, cfg: cfg, gemini: geminiClient, email: emailClient}
+	return &LiveHandler{
+		db:             db,
+		cfg:            cfg,
+		gemini:         geminiClient,
+		email:          emailClient,
+		connectLimiter: auth.NewRateLimiter(10, time.Minute),
+		upgrader: websocket.Upgrader{
+			// A WS handshake is a plain GET that carries cookies cross-site
+			// under SameSite=None (required for the split frontend/backend
+			// domains) - without validating Origin, any page on the internet
+			// could open a connection here using a logged-in victim's
+			// cookie (cross-site WebSocket hijacking). Only our own
+			// frontend origin may open this connection.
+			CheckOrigin: func(r *http.Request) bool {
+				return r.Header.Get("Origin") == cfg.FrontendURL
+			},
+		},
+	}
 }
 
 func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
+	if userIDHex, ok := auth.UserIDFromContext(r.Context()); ok && !h.connectLimiter.Allow(userIDHex) {
+		writeError(w, http.StatusTooManyRequests, "too many connection attempts, please try again later")
+		return
+	}
+
 	session, ok := loadOwnedSession(w, r, h.db)
 	if !ok {
 		return
@@ -85,7 +111,7 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

@@ -21,10 +21,21 @@ type SessionHandler struct {
 	db     *mongo.Database
 	cfg    config.Config
 	gemini *gemini.Client
+
+	// PostMessage triggers a real, paid Gemini call every time - this is a
+	// per-user throttle so a scripted loop (or a compromised session) can't
+	// run up unbounded API cost. Generous enough that no real conversational
+	// use should ever hit it.
+	messageLimiter *auth.RateLimiter
 }
 
 func NewSessionHandler(db *mongo.Database, cfg config.Config, geminiClient *gemini.Client) *SessionHandler {
-	return &SessionHandler{db: db, cfg: cfg, gemini: geminiClient}
+	return &SessionHandler{
+		db:             db,
+		cfg:            cfg,
+		gemini:         geminiClient,
+		messageLimiter: auth.NewRateLimiter(20, time.Minute),
+	}
 }
 
 func (h *SessionHandler) sessions() *mongo.Collection {
@@ -197,6 +208,11 @@ type postMessageRequest struct {
 func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	session, ok := loadOwnedSession(w, r, h.db)
 	if !ok {
+		return
+	}
+
+	if !h.messageLimiter.Allow(session.OwnerID.Hex()) {
+		writeError(w, http.StatusTooManyRequests, "too many requests, please slow down")
 		return
 	}
 

@@ -18,20 +18,30 @@ import (
 )
 
 type AuthHandler struct {
-	db           *mongo.Database
-	cfg          config.Config
-	email        *email.Client
-	limiter      *auth.LoginLimiter
-	resetLimiter *auth.LoginLimiter
+	db  *mongo.Database
+	cfg config.Config
+
+	email *email.Client
+
+	// Both login and reset are throttled by IP *and* by account, since an
+	// IP-only limit doesn't stop a distributed attempt against one target
+	// account from many source addresses, and an account-only limit doesn't
+	// stop one address hammering many accounts.
+	loginIPLimiter      *auth.RateLimiter
+	loginAccountLimiter *auth.RateLimiter
+	resetIPLimiter      *auth.RateLimiter
+	resetAccountLimiter *auth.RateLimiter
 }
 
 func NewAuthHandler(db *mongo.Database, cfg config.Config, emailClient *email.Client) *AuthHandler {
 	return &AuthHandler{
-		db:           db,
-		cfg:          cfg,
-		email:        emailClient,
-		limiter:      auth.NewLoginLimiter(5, 15*time.Minute),
-		resetLimiter: auth.NewLoginLimiter(3, 15*time.Minute),
+		db:                  db,
+		cfg:                 cfg,
+		email:               emailClient,
+		loginIPLimiter:      auth.NewRateLimiter(5, 15*time.Minute),
+		loginAccountLimiter: auth.NewRateLimiter(5, 15*time.Minute),
+		resetIPLimiter:      auth.NewRateLimiter(3, 15*time.Minute),
+		resetAccountLimiter: auth.NewRateLimiter(3, 15*time.Minute),
 	}
 }
 
@@ -164,13 +174,12 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 
 	const genericMessage = "if that email has an account, we've sent a password reset link"
 
-	clientKey := clientIP(r)
-	if !h.resetLimiter.Allow(clientKey) {
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !h.resetIPLimiter.Allow(clientIP(r)) || !h.resetAccountLimiter.Allow(email) {
 		writeError(w, http.StatusTooManyRequests, "too many requests, try again later")
 		return
 	}
 
-	email := strings.ToLower(strings.TrimSpace(req.Email))
 	ctx := r.Context()
 
 	var user models.User
@@ -235,6 +244,11 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	update := bson.M{
 		"$set":   bson.M{"password_hash": passwordHash},
 		"$unset": bson.M{"reset_token_hash": "", "reset_token_expires_at": ""},
+		// Revokes every session issued before this reset - a password reset
+		// is often prompted by a suspected compromise, so any token an
+		// attacker already holds should stop working immediately too, not
+		// just future logins requiring the new password.
+		"$inc": bson.M{"token_version": 1},
 	}
 
 	result, err := h.users().UpdateOne(r.Context(), filter, update)
@@ -258,13 +272,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientKey := clientIP(r)
-	if !h.limiter.Allow(clientKey) {
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !h.loginIPLimiter.Allow(clientIP(r)) || !h.loginAccountLimiter.Allow(email) {
 		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
 		return
 	}
-
-	email := strings.ToLower(strings.TrimSpace(req.Email))
 
 	var user models.User
 	err := h.users().FindOne(r.Context(), bson.M{"email": email}).Decode(&user)
@@ -283,7 +295,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.MintToken(user.ID.Hex(), h.cfg.JWTSecret, h.cfg.JWTTTL)
+	token, err := auth.MintToken(user.ID.Hex(), user.TokenVersion, h.cfg.JWTSecret, h.cfg.JWTTTL)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create session")
 		return
@@ -301,7 +313,23 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Logout bumps the user's TokenVersion (best-effort, not behind RequireAuth
+// since a logout call should still succeed and clear the cookie even with
+// an already-expired/invalid token) so the cookie being cleared here is
+// immediately revoked everywhere it's still held - a stolen copy of this
+// same cookie stops working the instant the real user logs out, rather than
+// remaining valid for the rest of its natural multi-day expiry.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(h.cfg.JWTCookieName); err == nil {
+		if claims, err := auth.ParseToken(cookie.Value, h.cfg.JWTSecret); err == nil {
+			if userID, err := bson.ObjectIDFromHex(claims.UserID); err == nil {
+				h.users().UpdateOne(r.Context(), bson.M{"_id": userID}, bson.M{
+					"$inc": bson.M{"token_version": 1},
+				})
+			}
+		}
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     h.cfg.JWTCookieName,
 		Value:    "",
@@ -368,7 +396,29 @@ func sameSiteFor(environment string) http.SameSite {
 	return http.SameSiteLaxMode
 }
 
+// clientIP extracts the real originating client address. Render sits behind
+// Cloudflare, which terminates the actual client connection - r.RemoteAddr
+// on every request the app ever sees is Render's own internal proxy address
+// (observed in production logs as "[::1]:port" for every single request,
+// regardless of who the real caller was), so using it directly as a rate
+// limit key would make the limiter effectively global across all users
+// instead of per-attacker. Cloudflare's True-Client-IP/CF-Connecting-IP
+// headers carry the real address; X-Forwarded-For is the standard fallback.
+// Locally (no Cloudflare in front) none of these headers are present, so it
+// falls through to RemoteAddr exactly as before.
 func clientIP(r *http.Request) string {
+	if ip := r.Header.Get("True-Client-IP"); ip != "" {
+		return ip
+	}
+	if ip := r.Header.Get("CF-Connecting-IP"); ip != "" {
+		return ip
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
 	host := r.RemoteAddr
 	if idx := strings.LastIndex(host, ":"); idx != -1 {
 		host = host[:idx]

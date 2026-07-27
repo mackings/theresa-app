@@ -91,6 +91,16 @@ func Load() Config {
 		log.Fatal(fmt.Errorf("missing required env vars: %v", missing))
 	}
 
+	// JWT_SECRET being merely non-empty isn't enough - HS256 signatures are
+	// only as strong as this key, so a short/guessable value (e.g. a
+	// placeholder like "changeme" left in by mistake) would let anyone who
+	// discovers it forge valid session tokens. 32 bytes matches this
+	// project's own convention for generated secrets (see the webhook
+	// secret hash, generated via `openssl rand -hex 24` = 48 hex chars).
+	if len(cfg.JWTSecret) < 32 {
+		log.Fatal("JWT_SECRET must be at least 32 characters - generate one with: openssl rand -hex 32")
+	}
+
 	return cfg
 }
 
