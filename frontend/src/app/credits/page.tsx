@@ -44,6 +44,16 @@ export default function CreditsPage() {
     setSubmitting(true);
     try {
       const { payment_link } = await initiatePurchase(amount);
+      // The callback page needs to know the balance as it was *before* this
+      // payment, so it can detect "did it actually increase" reliably - if
+      // it instead captured that baseline from its own first poll, a fast
+      // webhook (landing before that first poll) would corrupt the baseline
+      // to already equal the new balance, making the increase-check never
+      // fire and forcing a full ~15s timeout fallback even though crediting
+      // had already succeeded.
+      if (balanceKobo !== null) {
+        sessionStorage.setItem("theresa:pre-payment-balance-kobo", String(balanceKobo));
+      }
       window.location.href = payment_link;
     } catch {
       setError("Couldn't start payment - please try again.");

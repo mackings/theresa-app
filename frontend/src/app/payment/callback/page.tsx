@@ -12,9 +12,12 @@ import { getCreditBalance, formatNaira } from "@/lib/credits";
 // actual crediting happens via the webhook (server-to-server, independently
 // verified) - which may land a moment before or after this page loads. So
 // this polls briefly for the balance to change rather than assuming the
-// redirect itself means the credit has landed yet.
+// redirect itself means the credit has landed yet. A real webhook delivery
+// delay of ~21s has been observed in production, so the window here needs
+// real margin above that, not just a few seconds.
 const POLL_INTERVAL_MS = 1500;
-const MAX_POLLS = 10;
+const MAX_POLLS = 20;
+const PRE_PAYMENT_BALANCE_KEY = "theresa:pre-payment-balance-kobo";
 
 export default function PaymentCallbackPage() {
   const [balanceKobo, setBalanceKobo] = useState<number | null>(null);
@@ -23,17 +26,29 @@ export default function PaymentCallbackPage() {
   useEffect(() => {
     let cancelled = false;
     let attempt = 0;
-    const initialBalance = { current: null as number | null };
+
+    // The baseline to compare against must be the balance from *before* this
+    // payment, captured on /credits right before redirecting to Flutterwave
+    // - not from this page's own first poll. If the webhook happens to land
+    // before that first poll runs (a fast, successful credit - not a rare
+    // case), capturing the baseline here would already equal the new
+    // balance, so "did it increase" could never fire and this would always
+    // fall through to the full timeout instead of confirming immediately.
+    const stored = sessionStorage.getItem(PRE_PAYMENT_BALANCE_KEY);
+    sessionStorage.removeItem(PRE_PAYMENT_BALANCE_KEY);
+    let initialBalance: number | null = stored !== null ? Number(stored) : null;
 
     async function poll() {
       try {
         const b = await getCreditBalance();
         if (cancelled) return;
-        if (initialBalance.current === null) {
-          initialBalance.current = b.balance_kobo;
+        if (initialBalance === null) {
+          // No stored baseline (e.g. this page was opened directly) - fall
+          // back to the old best-effort behavior.
+          initialBalance = b.balance_kobo;
         }
         setBalanceKobo(b.balance_kobo);
-        if (b.balance_kobo > (initialBalance.current ?? 0) || attempt >= MAX_POLLS) {
+        if (b.balance_kobo > initialBalance || attempt >= MAX_POLLS) {
           setConfirmed(true);
           return;
         }
