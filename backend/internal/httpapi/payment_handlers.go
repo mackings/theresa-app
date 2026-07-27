@@ -115,11 +115,12 @@ func (h *PaymentHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 }
 
 // Webhook receives Flutterwave's payment notifications. Never trusts the
-// body alone: checks the flutterwave-signature header first as a fast
-// filter, then independently re-verifies the transaction directly with
-// Flutterwave using our secret key before crediting anything - the
-// verified server-to-server response is the only source of truth for
-// whether a payment actually succeeded.
+// body alone: checks the request's authentication header first as a fast
+// filter (either of Flutterwave's two real-world schemes - see
+// payments.VerifyWebhookAuth), then independently re-verifies the
+// transaction directly with Flutterwave using our secret key before
+// crediting anything - the verified server-to-server response is the only
+// source of truth for whether a payment actually succeeded.
 func (h *PaymentHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -128,14 +129,10 @@ func (h *PaymentHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	signature := r.Header.Get("flutterwave-signature")
-	if !payments.VerifyWebhookSignature(body, signature, h.cfg.FlutterwaveWebhookSecretKey) {
-		// TEMP: verbose diagnostic logging while root-causing a real signature
-		// mismatch in production - remove once resolved. Logs no secrets: the
-		// received/expected values here are one-way HMAC outputs tied to this
-		// specific request body, not the secret hash itself.
-		log.Printf("webhook signature mismatch - headers: %v", r.Header)
-		log.Printf("webhook signature mismatch - body (%d bytes): %s", len(body), string(body))
-		log.Printf("webhook signature mismatch - received=%q expected=%q", signature, payments.ExpectedWebhookSignature(body, h.cfg.FlutterwaveWebhookSecretKey))
+	verifHash := r.Header.Get("verif-hash")
+	if !payments.VerifyWebhookAuth(body, signature, verifHash, h.cfg.FlutterwaveWebhookSecretKey) {
+		log.Printf("webhook auth failed, rejecting (flutterwave-signature present=%v, verif-hash present=%v)",
+			signature != "", verifHash != "")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
