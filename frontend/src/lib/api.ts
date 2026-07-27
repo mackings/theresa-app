@@ -19,6 +19,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     credentials: "include",
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      // A plain cross-site HTML form can't set this - the backend requires
+      // it on state-changing requests specifically so a forged form
+      // submission from another site (which would still carry our
+      // SameSite=None session cookie) gets rejected before touching any
+      // handler logic.
+      "X-Requested-With": "XMLHttpRequest",
       ...init?.headers,
     },
   });
@@ -48,7 +54,7 @@ export async function streamSessionMessage(
   const res = await fetch(`${API_URL}/api/sessions/${sessionId}/messages`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
     body: JSON.stringify(body),
   });
 

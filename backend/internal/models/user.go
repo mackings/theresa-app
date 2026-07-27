@@ -19,6 +19,14 @@ type User struct {
 	CreatedAt                  time.Time     `bson:"created_at"`
 	LastLoginAt                time.Time     `bson:"last_login_at"`
 
+	// TokenVersion is embedded in every minted JWT and checked against the
+	// user's current value on every authenticated request - bumping it
+	// (logout, password reset) instantly invalidates every previously-issued
+	// token, even ones that haven't expired yet. Missing/zero on existing
+	// documents decodes as 0, matching a freshly-minted token's default, so
+	// no backfill is needed for accounts that predate this field.
+	TokenVersion int `bson:"token_version"`
+
 	// CreditBalanceKobo is money, stored as an integer count of kobo (1/100
 	// of a naira) rather than a float - avoids floating-point rounding error
 	// accumulating across many small per-session deductions, which matters

@@ -5,18 +5,19 @@ import (
 	"time"
 )
 
-// LoginLimiter is a minimal in-memory fixed-window rate limiter. State is
-// per-process and does not survive a restart or scale across instances —
-// acceptable for a single-process MVP.
-type LoginLimiter struct {
+// RateLimiter is a minimal in-memory fixed-window rate limiter, generic over
+// whatever string key a caller wants to throttle by (client IP, account
+// email, user ID). State is per-process and does not survive a restart or
+// scale across instances - acceptable for a single-instance deployment.
+type RateLimiter struct {
 	mu       sync.Mutex
 	attempts map[string][]time.Time
 	max      int
 	window   time.Duration
 }
 
-func NewLoginLimiter(max int, window time.Duration) *LoginLimiter {
-	return &LoginLimiter{
+func NewRateLimiter(max int, window time.Duration) *RateLimiter {
+	return &RateLimiter{
 		attempts: make(map[string][]time.Time),
 		max:      max,
 		window:   window,
@@ -24,8 +25,8 @@ func NewLoginLimiter(max int, window time.Duration) *LoginLimiter {
 }
 
 // Allow records an attempt for key and reports whether it's within the
-// allowed rate. Call it once per login attempt, regardless of outcome.
-func (l *LoginLimiter) Allow(key string) bool {
+// allowed rate. Call it once per attempt, regardless of outcome.
+func (l *RateLimiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

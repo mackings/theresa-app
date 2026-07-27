@@ -36,6 +36,44 @@ func quietLogger(next http.Handler) http.Handler {
 	})
 }
 
+// securityHeaders sets baseline defense-in-depth headers on every response.
+// This is a JSON/WebSocket API, not an HTML-rendering surface, so there's no
+// inline-script/style CSP tradeoff to worry about here the way there would
+// be on the frontend - these are all safe, zero-functional-risk additions.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireCSRFHeader defends state-changing, cookie-authenticated endpoints
+// against CSRF. The session cookie is SameSite=None (required so the split
+// frontend/backend domains can share it at all), which means it's sent on
+// cross-site requests too - a plain HTML form on an attacker's page can
+// auto-submit a POST that carries it. That same form can't set a custom
+// header, though, so requiring one here rejects a forged cross-site
+// submission before any handler logic runs, without affecting our own
+// frontend (which always sends this header - see lib/api.ts). Read-only
+// methods are exempt since there's nothing to forge.
+func requireCSRFHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.Header.Get("X-Requested-With") == "" {
+			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // NewRouter assembles the chi router with the global middleware stack and
 // registers all HTTP routes.
 func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client, geminiClient *gemini.Client) http.Handler {
@@ -43,10 +81,11 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 
 	r.Use(quietLogger)
 	r.Use(middleware.Recoverer)
+	r.Use(securityHeaders)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{cfg.FrontendURL},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Content-Type", "Authorization"},
+		AllowedHeaders:   []string{"Accept", "Content-Type", "Authorization", "X-Requested-With"},
 		AllowCredentials: true,
 	}))
 
@@ -62,14 +101,15 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		r.Post("/logout", authHandler.Logout)
 
 		r.Group(func(r chi.Router) {
-			r.Use(auth.RequireAuth(cfg.JWTCookieName, cfg.JWTSecret))
+			r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
 			r.Get("/me", authHandler.Me)
 		})
 	})
 
 	docHandler := NewDocumentHandler(db, cfg, geminiClient)
 	r.Route("/api/documents", func(r chi.Router) {
-		r.Use(auth.RequireAuth(cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(requireCSRFHeader)
 		r.Post("/", docHandler.Upload)
 		r.Get("/", docHandler.List)
 		r.Get("/{id}", docHandler.Get)
@@ -78,7 +118,8 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 
 	sessionHandler := NewSessionHandler(db, cfg, geminiClient)
 	r.Route("/api/sessions", func(r chi.Router) {
-		r.Use(auth.RequireAuth(cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(requireCSRFHeader)
 		r.Post("/", sessionHandler.Create)
 		r.Get("/", sessionHandler.List)
 		r.Get("/{id}", sessionHandler.Get)
@@ -89,7 +130,7 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 
 	liveHandler := NewLiveHandler(db, cfg, geminiClient, emailClient)
 	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAuth(cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
 		r.Get("/ws/session/{id}", liveHandler.HandleConnection)
 	})
 
@@ -101,7 +142,8 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		r.Post("/webhook", paymentHandler.Webhook)
 
 		r.Group(func(r chi.Router) {
-			r.Use(auth.RequireAuth(cfg.JWTCookieName, cfg.JWTSecret))
+			r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+			r.Use(requireCSRFHeader)
 			r.Post("/initiate", paymentHandler.Initiate)
 			r.Get("/balance", paymentHandler.Balance)
 		})
