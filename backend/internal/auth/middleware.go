@@ -30,36 +30,71 @@ func RequireAuth(db *mongo.Database, cookieName, jwtSecret string) func(http.Han
 				unauthorized(w)
 				return
 			}
-
-			claims, err := ParseToken(cookie.Value, jwtSecret)
-			if err != nil {
-				unauthorized(w)
-				return
-			}
-
-			userID, err := bson.ObjectIDFromHex(claims.UserID)
-			if err != nil {
-				unauthorized(w)
-				return
-			}
-
-			var current struct {
-				TokenVersion int `bson:"token_version"`
-			}
-			opts := options.FindOne().SetProjection(bson.M{"token_version": 1})
-			if err := db.Collection("users").FindOne(r.Context(), bson.M{"_id": userID}, opts).Decode(&current); err != nil {
-				unauthorized(w)
-				return
-			}
-			if current.TokenVersion != claims.TokenVersion {
-				unauthorized(w)
-				return
-			}
-
-			ctx := context.WithValue(r.Context(), userIDContextKey, claims.UserID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			authenticate(db, jwtSecret, cookie.Value, w, r, next)
 		})
 	}
+}
+
+// RequireAuthCookieOrTicket is RequireAuth plus a fallback to a short-lived
+// "?ticket=" query param. It exists only for the voice WebSocket route: that
+// connection goes directly to the backend's own origin (Next.js rewrites
+// can't proxy a WS upgrade), which is cross-site from the frontend's origin -
+// Safari's ITP won't reliably carry the session cookie there even though the
+// cookie itself now works fine for every proxied REST call. The ticket
+// (minted by SessionHandler.IssueWSTicket over the already-proxied, cookie-
+// authenticated REST path, 60s TTL) sidesteps that without needing a raw
+// WS-upgrade proxy or a shared custom domain. The cookie is still checked
+// first and still works for any client that does carry it (e.g. a browser
+// with an existing same-site-friendly setup) - the ticket is additive, not a
+// replacement.
+func RequireAuthCookieOrTicket(db *mongo.Database, cookieName, jwtSecret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if ticket := r.URL.Query().Get("ticket"); ticket != "" {
+				authenticate(db, jwtSecret, ticket, w, r, next)
+				return
+			}
+			cookie, err := r.Cookie(cookieName)
+			if err != nil {
+				unauthorized(w)
+				return
+			}
+			authenticate(db, jwtSecret, cookie.Value, w, r, next)
+		})
+	}
+}
+
+// authenticate validates a raw token string (from either a cookie or a
+// ws-ticket - same Claims shape, same TokenVersion revocation check either
+// way) and, on success, injects the user ID into the request context.
+func authenticate(db *mongo.Database, jwtSecret, tokenString string, w http.ResponseWriter, r *http.Request, next http.Handler) {
+	claims, err := ParseToken(tokenString, jwtSecret)
+	if err != nil {
+		unauthorized(w)
+		return
+	}
+
+	userID, err := bson.ObjectIDFromHex(claims.UserID)
+	if err != nil {
+		unauthorized(w)
+		return
+	}
+
+	var current struct {
+		TokenVersion int `bson:"token_version"`
+	}
+	opts := options.FindOne().SetProjection(bson.M{"token_version": 1})
+	if err := db.Collection("users").FindOne(r.Context(), bson.M{"_id": userID}, opts).Decode(&current); err != nil {
+		unauthorized(w)
+		return
+	}
+	if current.TokenVersion != claims.TokenVersion {
+		unauthorized(w)
+		return
+	}
+
+	ctx := context.WithValue(r.Context(), userIDContextKey, claims.UserID)
+	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func UserIDFromContext(ctx context.Context) (string, bool) {

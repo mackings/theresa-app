@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { BoardContentBlock } from "@/types/board";
 
 export interface LiveSessionHandlers {
@@ -20,9 +21,9 @@ export interface LiveSessionConnection {
   close: () => void;
 }
 
-function wsURL(sessionId: string): string {
+function wsURL(sessionId: string, ticket: string): string {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8090";
-  return apiUrl.replace(/^http/, "ws") + `/ws/session/${sessionId}`;
+  return apiUrl.replace(/^http/, "ws") + `/ws/session/${sessionId}?ticket=${encodeURIComponent(ticket)}`;
 }
 
 // Backend↔Gemini drops already reconnect transparently (M5) without this
@@ -38,7 +39,8 @@ export function connectLiveSession(
   sessionId: string,
   handlers: LiveSessionHandlers
 ): LiveSessionConnection {
-  let ws: WebSocket;
+  let ws: WebSocket | undefined;
+  let closed = false;
   let intentionalClose = false;
   // Set when the server tells us the session is over on purpose (out of
   // credits) - the socket closing right after that is expected, not a
@@ -122,17 +124,39 @@ export function connectLiveSession(
       const delay = OUTER_RECONNECT_BACKOFF_MS[reconnectAttempt];
       reconnectAttempt++;
       reconnectTimer = setTimeout(() => {
-        ws = new WebSocket(wsURL(sessionId));
-        attach(ws);
+        openSocket();
       }, delay);
     };
   }
 
-  ws = new WebSocket(wsURL(sessionId));
-  attach(ws);
+  // Every (re)connection needs its own freshly-minted ticket (see
+  // auth.RequireAuthCookieOrTicket) - this WS connects directly to the
+  // backend's own origin, cross-site from the frontend's, so it can't rely
+  // on the session cookie the way every proxied REST call now can. Fetching
+  // the ticket goes through apiFetch, i.e. through the frontend's own proxy,
+  // where the cookie works fine.
+  async function openSocket() {
+    if (closed) return;
+    let ticket: string;
+    try {
+      const res = await apiFetch<{ ticket: string }>(`/api/sessions/${sessionId}/ws-ticket`, {
+        method: "POST",
+      });
+      ticket = res.ticket;
+    } catch {
+      handlers.onError?.("failed to start voice connection");
+      return;
+    }
+    if (closed) return;
+    const socket = new WebSocket(wsURL(sessionId, ticket));
+    ws = socket;
+    attach(socket);
+  }
+
+  openSocket();
 
   function whenOpen(send: () => void) {
-    if (ws.readyState === WebSocket.OPEN) {
+    if (ws?.readyState === WebSocket.OPEN) {
       send();
     }
   }
@@ -140,7 +164,7 @@ export function connectLiveSession(
   return {
     sendAudioChunk: (pcm16) => {
       whenOpen(() => {
-        ws.send(
+        ws!.send(
           JSON.stringify({
             type: "audio_chunk_in",
             payload: { audio_b64: arrayBufferToBase64(pcm16) },
@@ -150,13 +174,14 @@ export function connectLiveSession(
     },
     sendText: (text) => {
       whenOpen(() => {
-        ws.send(JSON.stringify({ type: "text_input", payload: { text } }));
+        ws!.send(JSON.stringify({ type: "text_input", payload: { text } }));
       });
     },
     close: () => {
+      closed = true;
       intentionalClose = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      ws.close();
+      ws?.close();
     },
   };
 }
