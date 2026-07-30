@@ -29,7 +29,11 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  `connect-src 'self' ${apiUrl} ${apiWsUrl}`,
+  // The bare https(s) form of apiUrl is deliberately absent here - REST calls
+  // now go through the same-origin /api/* and /healthz rewrites below
+  // (see rewrites()), never a direct browser fetch to the backend's own
+  // origin. Only the voice WebSocket still connects to the backend directly.
+  `connect-src 'self' ${apiWsUrl}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "object-src 'none'",
@@ -49,6 +53,24 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: csp },
         ],
       },
+    ];
+  },
+  // Proxies REST calls through this frontend's own origin instead of the
+  // browser hitting the backend's origin directly. theresa-frontend.onrender.com
+  // and theresa-backend.onrender.com are cross-site to each other (Render
+  // registers onrender.com on the public suffix list so different customers'
+  // subdomains aren't treated as one site) - Safari's ITP silently refuses to
+  // store a session cookie set by a cross-site fetch() response, even with
+  // SameSite=None; Secure, which broke login on Safari specifically. Routed
+  // through this rewrite, the browser only ever talks to its own origin, so
+  // the Set-Cookie response looks first-party and Safari keeps it. The voice
+  // WebSocket is unaffected by this rewrite (Next.js rewrites don't proxy the
+  // WS upgrade) and still connects directly to the backend - a known,
+  // separate follow-up, not fixed by this change.
+  async rewrites() {
+    return [
+      { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
+      { source: "/healthz", destination: `${apiUrl}/healthz` },
     ];
   },
 };
