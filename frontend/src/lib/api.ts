@@ -1,6 +1,12 @@
 import { SessionEvent } from "@/types/board";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8090";
+// Requests go through this frontend's own origin (proxied to the real
+// backend via next.config.ts's rewrites()), not directly to the backend's
+// origin - Safari refuses to store a cookie set by a cross-site fetch()
+// response even with SameSite=None; Secure, which broke login there. Routing
+// through the frontend's own origin makes the Set-Cookie response look
+// first-party, which Safari (and every other browser) accepts normally.
+const API_URL = "";
 
 export class ApiError extends Error {
   status: number;
