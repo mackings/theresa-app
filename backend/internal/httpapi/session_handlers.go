@@ -200,6 +200,43 @@ func (h *SessionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "deleted"})
 }
 
+// wsTicketTTL is short deliberately - the ticket only needs to survive the
+// brief gap between this call and the WebSocket upgrade request right after
+// it (plus however many of the reconnect loop's own retries happen before
+// one succeeds), not a real session lifetime.
+const wsTicketTTL = 60 * time.Second
+
+// IssueWSTicket mints a short-lived, single-purpose token for the voice
+// WebSocket's own auth (see auth.RequireAuthCookieOrTicket). That connection
+// goes directly to the backend's own origin - cross-site from the frontend's,
+// unlike every other call which now goes through the frontend's proxy - so it
+// can't rely on the session cookie the way proxied REST calls can. Ownership
+// is enforced the same way as every other session endpoint (loadOwnedSession)
+// before a ticket is ever minted.
+func (h *SessionHandler) IssueWSTicket(w http.ResponseWriter, r *http.Request) {
+	session, ok := loadOwnedSession(w, r, h.db)
+	if !ok {
+		return
+	}
+
+	var user struct {
+		TokenVersion int `bson:"token_version"`
+	}
+	opts := options.FindOne().SetProjection(bson.M{"token_version": 1})
+	if err := h.db.Collection("users").FindOne(r.Context(), bson.M{"_id": session.OwnerID}, opts).Decode(&user); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to issue ticket")
+		return
+	}
+
+	ticket, err := auth.MintToken(session.OwnerID.Hex(), user.TokenVersion, h.cfg.JWTSecret, wsTicketTTL)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to issue ticket")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"ticket": ticket})
+}
+
 type postMessageRequest struct {
 	Text       string `json:"text"`
 	DocumentID string `json:"document_id"`

@@ -126,11 +126,16 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		r.Patch("/{id}", sessionHandler.UpdateMode)
 		r.Delete("/{id}", sessionHandler.Delete)
 		r.Post("/{id}/messages", sessionHandler.PostMessage)
+		r.Post("/{id}/ws-ticket", sessionHandler.IssueWSTicket)
 	})
 
 	liveHandler := NewLiveHandler(db, cfg, geminiClient, emailClient)
 	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+		// This connection goes directly to the backend's own origin, unlike
+		// every other route which the frontend now reaches through its own
+		// proxy - see auth.RequireAuthCookieOrTicket for why the cookie alone
+		// isn't reliable here.
+		r.Use(auth.RequireAuthCookieOrTicket(db, cfg.JWTCookieName, cfg.JWTSecret))
 		r.Get("/ws/session/{id}", liveHandler.HandleConnection)
 	})
 
