@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -23,16 +25,24 @@ var noisyHealthCheckPaths = map[string]bool{
 	"/favicon.ico": true,
 }
 
-// quietLogger wraps chi's request logger so the constant health-check
-// polling above doesn't drown out real application request logs.
+// quietLogger logs every non-noisy request: method, path, remote address,
+// status, response size, duration. Deliberately logs r.URL.Path rather than
+// the full request URI (chi's stock middleware.Logger logs the latter) -
+// some query params, like the voice WebSocket's short-lived ?ticket=, are
+// bearer credentials that have no business sitting in a log file even for
+// their short lifetime. No route today has a legitimate reason to want its
+// query string logged, so this is a blanket policy, not a per-route carve-out.
 func quietLogger(next http.Handler) http.Handler {
-	logged := middleware.Logger(next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if noisyHealthCheckPaths[r.URL.Path] {
 			next.ServeHTTP(w, r)
 			return
 		}
-		logged.ServeHTTP(w, r)
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		start := time.Now()
+		next.ServeHTTP(ww, r)
+		log.Printf("%q from %s - %d %dB in %s",
+			r.Method+" "+r.URL.Path+" "+r.Proto, r.RemoteAddr, ww.Status(), ww.BytesWritten(), time.Since(start))
 	})
 }
 
