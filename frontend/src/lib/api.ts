@@ -11,6 +11,16 @@ export class ApiError extends Error {
   }
 }
 
+// warmBackend pings the backend's health endpoint without waiting on or
+// surfacing the result. Render's free tier spins the backend down after
+// inactivity, so the very first real request (e.g. signup) can otherwise
+// take 30-60s+ instead of its normal ~1s - calling this the instant a page
+// that's about to need the backend mounts gives the cold start a head start
+// during the time a real user spends just typing into the form.
+export function warmBackend(): void {
+  fetch(`${API_URL}/healthz`).catch(() => {});
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { apiFetch, ApiError } from "@/lib/api";
+import { apiFetch, warmBackend, ApiError } from "@/lib/api";
 import {
   AuthCard,
   FormField,
@@ -17,6 +17,10 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    warmBackend();
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

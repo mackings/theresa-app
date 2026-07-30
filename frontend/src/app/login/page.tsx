@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch, ApiError } from "@/lib/api";
+import { apiFetch, warmBackend, ApiError } from "@/lib/api";
 import {
   AuthCard,
   FormField,
@@ -17,6 +17,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    warmBackend();
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

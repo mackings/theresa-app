@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -111,13 +112,23 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ID = result.InsertedID.(bson.ObjectID)
 
+	// Sent in the background so a slow (or, on a cold Render instance, very
+	// slow) Resend call never blocks the signup response - the account
+	// already exists and is real the moment InsertOne succeeds above. A
+	// fresh context is required since r.Context() is canceled the instant
+	// this handler returns, same pattern as DocumentHandler's background
+	// processing goroutine. A failure here is logged, not compensated: there's
+	// no resend-verification endpoint yet, so deleting the account would just
+	// trade "stuck unverified" for "signup silently vanished" - logging keeps
+	// the (rare) failure visible without erasing a real account.
 	verifyURL := h.cfg.FrontendURL + "/verify-email?token=" + rawToken
-	if err := h.email.SendVerificationEmail(ctx, user.Email, user.Name, verifyURL); err != nil {
-		// Compensate: don't leave an unverifiable, un-retryable account behind.
-		_, _ = h.users().DeleteOne(context.Background(), bson.M{"_id": user.ID})
-		writeError(w, http.StatusBadGateway, "failed to send verification email, please try again")
-		return
-	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := h.email.SendVerificationEmail(ctx, user.Email, user.Name, verifyURL); err != nil {
+			log.Printf("signup: failed to send verification email to %s: %v", user.Email, err)
+		}
+	}()
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":             user.ID.Hex(),
