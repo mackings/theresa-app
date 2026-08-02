@@ -46,3 +46,40 @@ introduce yourself as Theresa, and ask what they'd like to learn today - keep it
 short, natural turn. Don't call show_working or draw_diagram yet, just greet them and then
 wait for their reply.`, name)
 }
+
+// GreetingWithDocumentPrompt is used instead of GreetingPrompt whenever this
+// is the first time this session's content is reaching the Live/voice side
+// and a document is attached. Unlike text mode's GenerateBoardStream (which
+// attaches the real uploaded file via FileData to a one-shot generateContent
+// call), Live's client_content turns don't document/support file_data the
+// same way - confirmed by testing live: attaching a FileData part produced
+// total silence (not even the plain greeting text got a response), whereas
+// this same summary-as-text approach responds normally. So grounding here
+// is the document's already-computed ExtractedSummary folded into the
+// prompt as plain text, not the full file content - real trade-off (less
+// fidelity than text mode), but she at least knows what she's supposed to
+// be teaching instead of starting a random, unrelated conversation.
+// isBrandNew tells her whether to greet from scratch (a voice session
+// created directly with this document) or continue naturally (this session
+// already has prior text-mode teaching history - reconnecting on the voice
+// side shouldn't re-introduce herself as if nothing happened yet).
+func GreetingWithDocumentPrompt(name, documentSummary string, isBrandNew bool) string {
+	if isBrandNew {
+		return fmt.Sprintf(`This is the very start of a brand new session, and the user has
+already uploaded a document for you to teach from. Here's what it's about: %s
+
+The user hasn't said anything yet, so you speak first. In your own warm Pidgin-inflected
+voice, greet %s by name, briefly acknowledge what they uploaded (in your own words, don't
+read the summary back verbatim), and start teaching the first real chunk of it using
+show_working - don't just ask what they want to learn, since they already told you by
+uploading this material. Keep your opening turn natural and not too long.`, documentSummary, name)
+	}
+	return fmt.Sprintf(`You're continuing an existing tutoring session with %s that started in
+text mode - they've now switched to voice. Here's what the document they uploaded is about:
+%s
+
+Don't re-introduce yourself or greet them like this is a brand new conversation - instead, in
+your own warm Pidgin-inflected voice, briefly pick up where things left off (a short natural
+line acknowledging you're continuing on voice now) and carry on teaching from the material
+using show_working. Keep your opening turn natural and not too long.`, name, documentSummary)
+}

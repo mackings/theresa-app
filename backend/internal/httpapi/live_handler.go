@@ -94,6 +94,24 @@ func NewLiveHandler(db *mongo.Database, cfg config.Config, geminiClient *gemini.
 	}
 }
 
+// firstUnderstoodDocument returns the first attached, fully-processed
+// document for grounding a voice session's opening turn - deliberately just
+// the first one (teaching from one course at a time keeps the opening
+// context simple and bounded) rather than every attached document. Ownership
+// isn't re-checked here since session.DocumentIDs only ever contains ids the
+// session's own owner attached (see SessionHandler.PostMessage's $addToSet).
+func (h *LiveHandler) firstUnderstoodDocument(ctx context.Context, session models.TutorSession) (models.Document, bool) {
+	if len(session.DocumentIDs) == 0 {
+		return models.Document{}, false
+	}
+	var doc models.Document
+	err := h.db.Collection("documents").FindOne(ctx, bson.M{"_id": session.DocumentIDs[0]}).Decode(&doc)
+	if err != nil || doc.Status != "understood" || doc.ExtractedSummary == "" {
+		return models.Document{}, false
+	}
+	return doc, true
+}
+
 func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	if userIDHex, ok := auth.UserIDFromContext(r.Context()); ok && !h.connectLimiter.Allow(userIDHex) {
 		writeError(w, http.StatusTooManyRequests, "too many connection attempts, please try again later")
@@ -166,13 +184,28 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 
 	conn.WriteJSON(creditBalanceMessage(user.CreditBalanceKobo, user.FreeTrialSecondsRemaining))
 
-	// Only a genuinely brand new session (no prior events) gets the opening
-	// greeting - reconnecting to an ongoing conversation must never reset it
-	// back to "what would you like to learn today", which would contradict
-	// the resumption handle actually continuing the same conversation state.
-	if len(session.Events) == 0 {
-		if err := liveSession.SendText(live.GreetingPrompt(user.Name)); err != nil {
-			log.Printf("failed to send opening greeting: %v", err)
+	// Only the first time this session's content ever reaches the Live/voice
+	// side gets an opening message - a non-empty resumption handle means
+	// Gemini already has this session's conversation state, so re-sending
+	// anything here would duplicate/contradict what it already remembers
+	// (covers both a reconnect within one browser session and a page
+	// refresh, either of which already has a handle by this point).
+	if session.GeminiResumptionHandle == "" {
+		isBrandNew := len(session.Events) == 0
+		if doc, ok := h.firstUnderstoodDocument(r.Context(), session); ok {
+			// A document is attached - ground the opening turn in its
+			// summary instead of the generic greeting, so voice mode
+			// actually knows what it's teaching instead of starting a
+			// random, unrelated conversation. See GreetingWithDocumentPrompt
+			// for why this uses the summary rather than attaching the file.
+			prompt := live.GreetingWithDocumentPrompt(user.Name, doc.ExtractedSummary, isBrandNew)
+			if err := liveSession.SendText(prompt); err != nil {
+				log.Printf("failed to send document-grounded opening message: %v", err)
+			}
+		} else if isBrandNew {
+			if err := liveSession.SendText(live.GreetingPrompt(user.Name)); err != nil {
+				log.Printf("failed to send opening greeting: %v", err)
+			}
 		}
 	}
 
