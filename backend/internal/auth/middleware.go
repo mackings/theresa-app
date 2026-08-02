@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -22,15 +23,20 @@ const userIDContextKey contextKey = "user_id"
 // database round trip added for revocation support; it's a single indexed
 // lookup by _id with a minimal projection, consistent with the per-request
 // Mongo lookups already done elsewhere in this app (loadOwnedSession, Me).
-func RequireAuth(db *mongo.Database, cookieName, jwtSecret string) func(http.Handler) http.Handler {
+//
+// It also slides the cookie's expiration forward: once less than half of its
+// TTL remains, a fresh token/cookie is issued on the spot. A user who keeps
+// visiting never hits the expiry at all; only someone who stops returning
+// for a full TTL period actually gets logged out.
+func RequireAuth(db *mongo.Database, jwtSecret string, cookieCfg SessionCookieConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			cookie, err := r.Cookie(cookieName)
+			cookie, err := r.Cookie(cookieCfg.Name)
 			if err != nil {
 				unauthorized(w)
 				return
 			}
-			authenticate(db, jwtSecret, cookie.Value, w, r, next)
+			authenticate(db, jwtSecret, cookie.Value, w, r, next, &cookieCfg)
 		})
 	}
 }
@@ -47,27 +53,32 @@ func RequireAuth(db *mongo.Database, cookieName, jwtSecret string) func(http.Han
 // first and still works for any client that does carry it (e.g. a browser
 // with an existing same-site-friendly setup) - the ticket is additive, not a
 // replacement.
-func RequireAuthCookieOrTicket(db *mongo.Database, cookieName, jwtSecret string) func(http.Handler) http.Handler {
+func RequireAuthCookieOrTicket(db *mongo.Database, jwtSecret string, cookieCfg SessionCookieConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if ticket := r.URL.Query().Get("ticket"); ticket != "" {
-				authenticate(db, jwtSecret, ticket, w, r, next)
+				// A ws-ticket is a 60s-lived, single-purpose token, not the
+				// real session - it never gets refreshed/slid forward.
+				authenticate(db, jwtSecret, ticket, w, r, next, nil)
 				return
 			}
-			cookie, err := r.Cookie(cookieName)
+			cookie, err := r.Cookie(cookieCfg.Name)
 			if err != nil {
 				unauthorized(w)
 				return
 			}
-			authenticate(db, jwtSecret, cookie.Value, w, r, next)
+			authenticate(db, jwtSecret, cookie.Value, w, r, next, &cookieCfg)
 		})
 	}
 }
 
 // authenticate validates a raw token string (from either a cookie or a
 // ws-ticket - same Claims shape, same TokenVersion revocation check either
-// way) and, on success, injects the user ID into the request context.
-func authenticate(db *mongo.Database, jwtSecret, tokenString string, w http.ResponseWriter, r *http.Request, next http.Handler) {
+// way) and, on success, injects the user ID into the request context. When
+// refreshCfg is non-nil and the token is past the halfway point of its
+// lifetime, a fresh token is minted and written back as a new cookie before
+// the request continues (sliding expiration).
+func authenticate(db *mongo.Database, jwtSecret, tokenString string, w http.ResponseWriter, r *http.Request, next http.Handler, refreshCfg *SessionCookieConfig) {
 	claims, err := ParseToken(tokenString, jwtSecret)
 	if err != nil {
 		unauthorized(w)
@@ -91,6 +102,14 @@ func authenticate(db *mongo.Database, jwtSecret, tokenString string, w http.Resp
 	if current.TokenVersion != claims.TokenVersion {
 		unauthorized(w)
 		return
+	}
+
+	if refreshCfg != nil && claims.ExpiresAt != nil {
+		if time.Until(claims.ExpiresAt.Time) < refreshCfg.TTL/2 {
+			if newToken, err := MintToken(claims.UserID, claims.TokenVersion, jwtSecret, refreshCfg.TTL); err == nil {
+				SetSessionCookie(w, refreshCfg.Name, newToken, refreshCfg.Environment, refreshCfg.TTL)
+			}
+		}
 	}
 
 	ctx := context.WithValue(r.Context(), userIDContextKey, claims.UserID)

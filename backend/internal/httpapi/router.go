@@ -89,6 +89,12 @@ func requireCSRFHeader(next http.Handler) http.Handler {
 func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client, geminiClient *gemini.Client) http.Handler {
 	r := chi.NewRouter()
 
+	sessionCookieCfg := auth.SessionCookieConfig{
+		Name:        cfg.JWTCookieName,
+		TTL:         cfg.JWTTTL,
+		Environment: cfg.Environment,
+	}
+
 	r.Use(quietLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)
@@ -111,14 +117,14 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		r.Post("/logout", authHandler.Logout)
 
 		r.Group(func(r chi.Router) {
-			r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+			r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
 			r.Get("/me", authHandler.Me)
 		})
 	})
 
 	docHandler := NewDocumentHandler(db, cfg, geminiClient)
 	r.Route("/api/documents", func(r chi.Router) {
-		r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
 		r.Use(requireCSRFHeader)
 		r.Post("/", docHandler.Upload)
 		r.Get("/", docHandler.List)
@@ -128,7 +134,7 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 
 	sessionHandler := NewSessionHandler(db, cfg, geminiClient)
 	r.Route("/api/sessions", func(r chi.Router) {
-		r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
 		r.Use(requireCSRFHeader)
 		r.Post("/", sessionHandler.Create)
 		r.Get("/", sessionHandler.List)
@@ -145,7 +151,7 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		// every other route which the frontend now reaches through its own
 		// proxy - see auth.RequireAuthCookieOrTicket for why the cookie alone
 		// isn't reliable here.
-		r.Use(auth.RequireAuthCookieOrTicket(db, cfg.JWTCookieName, cfg.JWTSecret))
+		r.Use(auth.RequireAuthCookieOrTicket(db, cfg.JWTSecret, sessionCookieCfg))
 		r.Get("/ws/session/{id}", liveHandler.HandleConnection)
 	})
 
@@ -157,7 +163,7 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		r.Post("/webhook", paymentHandler.Webhook)
 
 		r.Group(func(r chi.Router) {
-			r.Use(auth.RequireAuth(db, cfg.JWTCookieName, cfg.JWTSecret))
+			r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
 			r.Use(requireCSRFHeader)
 			r.Post("/initiate", paymentHandler.Initiate)
 			r.Get("/balance", paymentHandler.Balance)
