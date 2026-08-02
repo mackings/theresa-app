@@ -73,6 +73,21 @@ const nextConfig: NextConfig = {
       { source: "/healthz", destination: `${apiUrl}/healthz` },
     ];
   },
+  // Confirmed directly from Next.js's own proxy implementation
+  // (node_modules/next/dist/server/lib/router-utils/proxy-request.js): an
+  // external rewrite like the one above is proxied via http-proxy with a
+  // hardcoded 30-second default timeout, and when it fires the browser gets
+  // no error at all - the connection is just abandoned, leaving the UI stuck
+  // indefinitely even on requests the backend would have gone on to complete.
+  // POST /api/sessions/:id/messages can legitimately run past 30s (a single
+  // Gemini generation is capped at 45s server-side, and now retries once on
+  // failure - see maxGenerateBoardWait/PostMessage in the backend), so the
+  // default silently broke exactly this endpoint. 120s comfortably covers
+  // that worst case (45s x 2 retries + margin) without being so long that a
+  // truly hung backend leaves the browser waiting unreasonably.
+  experimental: {
+    proxyTimeout: 120000,
+  },
 };
 
 export default nextConfig;

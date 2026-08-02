@@ -82,7 +82,7 @@ func GreetingWithDocumentPrompt(name, documentSummary string, isBrandNew bool) s
 		return fmt.Sprintf(`This is the very start of a brand new session, and the user has
 already uploaded a document for you to teach from. Here's what it's about: %s
 
-The user hasn't said anything yet, so you speak first. In your own warm Pidgin-inflected
+The user hasn't said anything yet, so you speak first. In your own warm
 voice, greet %s by name, briefly acknowledge what they uploaded (in your own words, don't
 read the summary back verbatim), and start teaching the first real chunk of it using
 show_working - don't just ask what they want to learn, since they already told you by
