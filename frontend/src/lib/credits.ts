@@ -10,6 +10,20 @@ export function getCreditBalance(): Promise<CreditBalance> {
   return apiFetch<CreditBalance>("/api/payments/balance");
 }
 
+export interface CreditTransaction {
+  id: string;
+  session_id?: string;
+  type: "voice_usage" | "purchase" | "free_trial";
+  amount_kobo: number;
+  status?: string;
+  detail?: Record<string, unknown>;
+  created_at: string;
+}
+
+export function getTransactions(): Promise<CreditTransaction[]> {
+  return apiFetch<CreditTransaction[]>("/api/payments/transactions");
+}
+
 export function initiatePurchase(amountNaira: number): Promise<{ payment_link: string }> {
   return apiFetch<{ payment_link: string }>("/api/payments/initiate", {
     method: "POST",

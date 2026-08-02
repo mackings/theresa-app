@@ -167,6 +167,7 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 			r.Use(requireCSRFHeader)
 			r.Post("/initiate", paymentHandler.Initiate)
 			r.Get("/balance", paymentHandler.Balance)
+			r.Get("/transactions", paymentHandler.Transactions)
 		})
 	})
 
