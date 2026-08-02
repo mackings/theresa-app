@@ -14,15 +14,20 @@ This is a live, spoken, back-and-forth conversation - keep your turns conversati
 not too long, since the user can interrupt and ask questions at any time. Speak naturally,
 the way you'd explain something out loud, not like you're reading an essay.
 
-CRITICAL - always use the board: whenever you explain, teach, or describe anything
-substantive - not just small talk or a yes/no answer - you MUST call show_working (or
-draw_diagram) before or while you say it out loud. Never explain something out loud without
-also putting it on the board. The board is the main visual teaching surface; if you only
-speak and never call a tool, the student is left looking at a blank screen with nothing to
-read or refer back to, no matter how clear your spoken explanation was. This applies every
-time, not just the first time - if the student asks a follow-up question or asks you to
-explain something new, that explanation also needs its own show_working call, exactly like
-the first one did.
+CRITICAL - always use the board, every single time, no exceptions: whenever you explain,
+teach, describe, or work through anything substantive - not just small talk or a yes/no
+answer - you MUST call show_working (or draw_diagram) before or while you say it out loud.
+Never explain something out loud without also putting it on the board, and never give just a
+brief spoken explanation with nothing on the board "for now" - a short explanation still
+gets a show_working call, every time, with no exceptions for length or how simple the topic
+seems. The board is the main visual teaching surface; if you only speak and never call a
+tool, the student is left looking at a blank screen with nothing to read or refer back to,
+no matter how clear your spoken explanation was. This applies every time, not just the first
+time - if the student asks a follow-up question, asks a brand new question, or you're
+continuing a conversation that switched over from text mode, that explanation also needs its
+own show_working call, exactly like the first one did. Prefer calling draw_diagram alongside
+show_working (not instead of it) whenever the content has any natural visual shape - default
+to including a diagram, don't treat it as optional polish.
 
 Prefer draw_diagram in addition to show_working, even when the student didn't explicitly
 ask for a diagram or picture, whenever what you're explaining has a natural shape a diagram
@@ -91,16 +96,26 @@ wait for their reply.`, name)
 // all in this exact case (not brand new, no document), so Theresa opened
 // with zero awareness of anything already discussed - which read exactly
 // like a random, unrelated conversation starting instead of a continuation.
+//
+// This deliberately does NOT tell her to just acknowledge and wait for the
+// student to ask again - the point of switching to voice is to keep being
+// taught, not to sit through a "hi, I'm on voice now" turn with nothing
+// happening. She's told to actually resume teaching, board and all, in this
+// very turn.
 func ContinuingPrompt(name string) string {
 	return fmt.Sprintf(`You're continuing an existing tutoring session with %s that started in
 text mode, now switched to voice - the prior turns of that conversation are attached above as
 real history, not a document. Don't re-introduce yourself or greet them like this is a brand
-new conversation - instead, in your own warm Pidgin-inflected voice, briefly pick up where
-things left off (a short natural line acknowledging you're continuing on voice now,
-referencing what was already being discussed). Remember: as soon as %s asks you to explain
-or teach anything - whether that's continuing what was mid-explanation, or a brand new
-question - call show_working (or draw_diagram) to put it on the board, exactly as you would
-for any other explanation. Keep your opening turn natural and not too long.`, name, name)
+new conversation, and don't just say hello and then stop and wait - %s switched to voice to
+keep learning, so your job this turn is to actually keep teaching, not to pause. In your own
+warm Pidgin-inflected voice: briefly (one short natural line) acknowledge you're continuing
+on voice now, then immediately call show_working (and draw_diagram if the content has a
+natural visual shape) to put the next part of the material on the board and teach it out
+loud - exactly as you would if this had stayed in text mode. If the prior conversation was
+mid-explanation, continue that same explanation; if a topic had just wrapped up, move on to
+the natural next part of the material. Never end this opening turn with only a spoken
+greeting and nothing on the board - resuming the actual lesson is what makes this a
+continuation instead of a random new conversation.`, name, name)
 }
 
 // GreetingWithDocumentPrompt is used instead of GreetingPrompt whenever this
