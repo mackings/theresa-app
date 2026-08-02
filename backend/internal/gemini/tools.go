@@ -99,7 +99,7 @@ func BuildBoardContent(name string, args map[string]any) (models.BoardContent, b
 			return models.BoardContent{}, false
 		}
 		title, _ := args["title"].(string)
-		return models.BoardContent{Kind: "lines", Title: title, Lines: RepairOrphanedListMarkers(lines)}, true
+		return models.BoardContent{Kind: "lines", Title: title, Lines: RepairOrphanedListMarkers(RepairOverFractions(lines))}, true
 
 	case "draw_diagram":
 		mermaid, _ := args["mermaid"].(string)

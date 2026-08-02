@@ -31,8 +31,14 @@ can call it again later for the next board). Wrap inline math in single dollar s
 one line. For a numbered or bulleted list, each item's marker and its text belong together
 on the SAME line, and a bare marker must never appear as its own separate line - wrong:
 ["We look for two numbers that: 1", "Multiply to give c", "2", "Add up to give b"], right:
-["We look for two numbers that:", "1. Multiply to give c", "2. Add up to give b"]. Never
-merge a heading-like phrase into the start of a line or run unrelated sentences together
+["We look for two numbers that:", "1. Multiply to give c", "2. Add up to give b"]. For a
+fraction, always use \frac{numerator}{denominator} - never the older \over syntax (e.g.
+"$a \over b$"), which renders incorrectly in this app's math renderer. Any multi-letter
+abbreviation or descriptive word used inside math mode ($...$) must be wrapped in
+\text{...} - write $\text{PED} = \frac{\text{Change in Quantity}}{\text{Change in Price}}$,
+never bare $PED = ...$: a bare multi-letter token in math mode renders as separate
+spaced-out italic letters, not as a normal word or abbreviation. Never merge a
+heading-like phrase into the start of a line or run unrelated sentences together
 with no break between them. Only call draw_diagram for a genuine cycle, branch, or
 sequence of steps - never for a numeric graph or plot, since Mermaid can't render axes or
 plotted data; describe a graph in words via show_working instead. Speak numbers and formulas

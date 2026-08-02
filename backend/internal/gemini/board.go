@@ -50,7 +50,13 @@ You have three tools:
   bulleted list, each item's marker and its text belong together on the SAME line, and a bare
   marker must never appear as its own separate line - wrong: ["We look for two numbers that:
   1", "Multiply to give c", "2", "Add up to give b"], right: ["We look for two numbers that:",
-  "1. Multiply to give c", "2. Add up to give b"].
+  "1. Multiply to give c", "2. Add up to give b"]. For a fraction, always use
+  \frac{numerator}{denominator} - never the older \over syntax (e.g. "$a \over b$"), which
+  renders incorrectly in this app's math renderer. Any multi-letter abbreviation or
+  descriptive word used inside math mode ($...$) must be wrapped in \text{...} - write
+  $\text{PED} = \frac{\text{Change in Quantity}}{\text{Change in Price}}$, never bare
+  $PED = ...$: a bare multi-letter token in math mode renders as separate spaced-out
+  italic letters (e.g. "P E D"), not as a normal word or abbreviation.
 - draw_diagram(title?, mermaid): draw a Mermaid diagram - only for a genuine cycle, branch, or
   sequence of steps, never a numeric graph or plot (Mermaid can't render axes or plotted data -
   describe that in words via show_working instead).
@@ -252,6 +258,46 @@ func RepairOrphanedListMarkers(lines []string) []string {
 			continue // drop this bare-marker line - its content moved onto the next
 		}
 		repaired = append(repaired, lines[i])
+	}
+	return repaired
+}
+
+// overFractionRe matches a whole inline-math segment built with the older
+// TeX \over fraction syntax (e.g. "$\text{A} \over \text{B}$"). Deliberately
+// simple - a non-greedy match between the two $ delimiters, split on \over -
+// rather than a brace-aware parser: the case actually observed has no
+// nested $ signs, and if a genuinely unusual expression doesn't match
+// cleanly, ReplaceAllStringFunc just leaves that segment untouched (a safe
+// failure mode - no risk of mangling something this pattern wasn't meant
+// to handle).
+var overFractionRe = regexp.MustCompile(`\$([^$]*?)\\over([^$]*?)\$`)
+
+// RepairOverFractions defends against an observed Gemini quirk: despite the
+// system prompt's explicit instruction to use \frac{}{}, the model
+// occasionally still writes a fraction with the older \over syntax instead
+// (e.g. "$\text{Percentage Change in Demand} \over \text{Percentage Change
+// in Price}$") - which this app's KaTeX renderer doesn't handle cleanly,
+// observed in practice rendering as each character spelled out individually
+// in math-italic with spaces between them rather than an actual fraction.
+// Rewrites the whole segment as $\frac{numerator}{denominator}$, which KaTeX
+// renders correctly. Prompt compliance alone isn't reliable (the same
+// lesson already learned from RepairOrphanedListMarkers above), so this is
+// the same defense-in-depth pattern applied to a different Gemini quirk.
+func RepairOverFractions(lines []string) []string {
+	repaired := make([]string, len(lines))
+	for i, line := range lines {
+		repaired[i] = overFractionRe.ReplaceAllStringFunc(line, func(match string) string {
+			parts := overFractionRe.FindStringSubmatch(match)
+			if len(parts) != 3 {
+				return match
+			}
+			numerator := strings.TrimSpace(parts[1])
+			denominator := strings.TrimSpace(parts[2])
+			if numerator == "" || denominator == "" {
+				return match
+			}
+			return fmt.Sprintf(`$\frac{%s}{%s}$`, numerator, denominator)
+		})
 	}
 	return repaired
 }
