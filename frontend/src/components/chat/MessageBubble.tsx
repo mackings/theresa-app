@@ -3,11 +3,9 @@ import { Sparkles } from "lucide-react";
 export function MessageBubble({
   role,
   text,
-  stepCount,
 }: {
   role: "user" | "assistant";
-  text?: string;
-  stepCount?: number;
+  text: string;
 }) {
   if (role === "user") {
     return (
@@ -22,15 +20,9 @@ export function MessageBubble({
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-foreground)]">
         <Sparkles className="h-3.5 w-3.5" />
       </div>
-      {text ? (
-        <div className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3.5 py-2 text-sm text-[var(--color-text-primary)]">
-          {text}
-        </div>
-      ) : (
-        <div className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3.5 py-2 text-sm text-[var(--color-text-secondary)]">
-          Explained on the board — {stepCount} step{stepCount === 1 ? "" : "s"}
-        </div>
-      )}
+      <div className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3.5 py-2 text-sm text-[var(--color-text-primary)]">
+        {text}
+      </div>
     </div>
   );
 }

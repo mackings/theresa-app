@@ -17,9 +17,12 @@ const SUGGESTIONS = [
 
 type Turn =
   | { role: "user"; seq: number; text: string }
-  | { role: "assistant"; kind: "board"; seq: number; stepCount: number }
-  | { role: "assistant"; kind: "chat"; seq: number; text: string };
+  | { role: "assistant"; seq: number; text: string };
 
+// board_update events aren't represented in the chat panel at all - the
+// Board component is their real home. Only real conversational turns
+// (what the student typed, and Theresa's genuine chat_checkin replies)
+// show up here.
 function groupIntoTurns(events: SessionEvent[]): Turn[] {
   const sorted = [...events].sort((a, b) => a.seq - b.seq);
   const turns: Turn[] = [];
@@ -27,21 +30,8 @@ function groupIntoTurns(events: SessionEvent[]): Turn[] {
   for (const event of sorted) {
     if (event.type === "user_text") {
       turns.push({ role: "user", seq: event.seq, text: event.text ?? "" });
-      continue;
-    }
-
-    // A real conversational check-in - its own bubble with real text, never
-    // folded into the board step-count indicator below.
-    if (event.type === "chat_message") {
-      turns.push({ role: "assistant", kind: "chat", seq: event.seq, text: event.text ?? "" });
-      continue;
-    }
-
-    const last = turns[turns.length - 1];
-    if (last?.role === "assistant" && last.kind === "board") {
-      last.stepCount += 1;
-    } else {
-      turns.push({ role: "assistant", kind: "board", seq: event.seq, stepCount: 1 });
+    } else if (event.type === "chat_message") {
+      turns.push({ role: "assistant", seq: event.seq, text: event.text ?? "" });
     }
   }
 
@@ -121,15 +111,9 @@ export function ChatPanel({
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-2 overflow-y-auto p-4">
-        {turns.map((turn) =>
-          turn.role === "user" ? (
-            <MessageBubble key={turn.seq} role="user" text={turn.text} />
-          ) : turn.kind === "chat" ? (
-            <MessageBubble key={turn.seq} role="assistant" text={turn.text} />
-          ) : (
-            <MessageBubble key={turn.seq} role="assistant" stepCount={turn.stepCount} />
-          )
-        )}
+        {turns.map((turn) => (
+          <MessageBubble key={turn.seq} role={turn.role} text={turn.text} />
+        ))}
       </div>
 
       <form onSubmit={onSubmit} className="border-t border-[var(--color-border)] p-3">
