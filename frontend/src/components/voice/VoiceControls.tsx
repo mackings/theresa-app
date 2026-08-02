@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Mic, MessageCircle, MicOff, Send, Sparkles, WifiOff, X } from "lucide-react";
+import { AlertCircle, Mic, MessageCircle, MicOff, PhoneOff, Send, Sparkles, WifiOff } from "lucide-react";
 import { connectLiveSession, LiveSessionConnection } from "@/lib/ws-client";
 import { startMicCapture, MicCapture, PlaybackQueue } from "@/lib/audio";
 import { BoardAudioSync } from "@/lib/board/audioSync";
@@ -221,19 +221,23 @@ export function VoiceControls({
           <button
             type="button"
             onClick={toggleMic}
-            aria-label={micOn ? "Turn microphone off" : "Turn microphone on"}
+            aria-label={micOn ? "Mute microphone" : "Unmute microphone"}
             className="flex h-16 w-16 items-center justify-center rounded-[var(--radius-full)] bg-[var(--color-text-primary)] text-[var(--color-bg)] shadow-[var(--shadow-md)] transition-transform hover:scale-105"
           >
-            {micOn ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+            {/* Icon reflects mic state, not a "what tapping does" hint - a
+                slash-through mic means "you are muted right now", matching
+                how every real calling app (phone, Zoom, Meet) reads this
+                button, not the inverse "tap to mute" affordance. */}
+            {micOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
           </button>
-          <IconButton
-            variant="secondary"
-            aria-label="Leave voice session"
+          <button
+            type="button"
             onClick={() => router.push("/dashboard")}
-            className="h-12 w-12 rounded-[var(--radius-full)]"
+            aria-label="End session"
+            className="flex h-12 w-12 items-center justify-center rounded-[var(--radius-full)] bg-[var(--color-danger)] text-white shadow-[var(--shadow-sm)] transition-transform hover:scale-105"
           >
-            <X className="h-5 w-5" />
-          </IconButton>
+            <PhoneOff className="h-5 w-5" />
+          </button>
         </div>
       </div>
     </div>
