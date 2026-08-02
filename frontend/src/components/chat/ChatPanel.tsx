@@ -54,6 +54,7 @@ export function ChatPanel({
   documentId,
   onDocumentReady,
   onNewEvents,
+  solving,
   onSolvingChange,
 }: {
   sessionId: string;
@@ -61,6 +62,16 @@ export function ChatPanel({
   documentId?: string;
   onDocumentReady: (doc: DocumentMeta) => void;
   onNewEvents: (events: SessionEvent[]) => void;
+  // Whether *anything* is currently generating for this session - not just a
+  // message sent from this component. The initial "Teach me this material"
+  // auto-send (session/[id]/page.tsx's own pending-message effect) sets this
+  // too, so this composer stays locked for that duration as well - without
+  // it, a second message could be submitted while the first was still
+  // actively streaming, producing two concurrent, interleaved, unrelated
+  // responses in the same session (observed in practice: a document-grounded
+  // answer and a completely unrelated generic answer landing interleaved in
+  // one stream).
+  solving?: boolean;
   onSolvingChange?: (solving: boolean) => void;
 }) {
   const [text, setText] = useState("");
@@ -73,7 +84,7 @@ export function ChatPanel({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!text.trim() || sending) return;
+    if (!text.trim() || sending || solving) return;
 
     setError(null);
     setSending(true);
@@ -203,11 +214,11 @@ export function ChatPanel({
           <IconButton
             type="submit"
             variant="primary"
-            disabled={sending || !text.trim()}
+            disabled={sending || solving || !text.trim()}
             aria-label="Send message"
             className="h-8 w-8 rounded-[var(--radius-full)]"
           >
-            {sending ? (
+            {sending || solving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />

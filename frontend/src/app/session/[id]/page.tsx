@@ -125,6 +125,7 @@ export default function SessionPage() {
                 documentId={documentId}
                 onDocumentReady={(doc: DocumentMeta) => setDocumentId(doc.id)}
                 onNewEvents={(newEvents) => setEvents((prev) => [...prev, ...newEvents])}
+                solving={solving}
                 onSolvingChange={setSolving}
               />
             </div>

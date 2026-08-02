@@ -119,15 +119,19 @@ export default function DashboardPage() {
     }
   }
 
+  // Voice, not text: LiveHandler already grounds a voice connection in any
+  // document attached via document_ids automatically (see
+  // firstUnderstoodDocument in live_handler.go) - no pending-message
+  // hand-off needed, and Theresa can start speaking about the material
+  // within a couple seconds instead of the user watching a written answer
+  // stream in. This is the fast, no-delay path the text flow can't match:
+  // text mode's real teaching content still has to wait for Gemini to
+  // finish processing the whole document before anything appears.
   async function handleDocumentReady(doc: DocumentMeta) {
     if (creating) return;
     setCreating(true);
     try {
-      const session = await createSession("text");
-      sessionStorage.setItem(
-        `theresa:pending-message:${session.id}`,
-        JSON.stringify({ text: "Teach me this material", documentId: doc.id })
-      );
+      const session = await createSession("voice", [doc.id]);
       router.push(`/session/${session.id}`);
     } finally {
       setCreating(false);
