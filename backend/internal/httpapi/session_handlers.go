@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -358,7 +359,7 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err := h.gemini.GenerateBoardStream(r.Context(), boardReq, func(block models.BoardContent) error {
+	onBoard := func(block models.BoardContent) error {
 		var event models.SessionEvent
 		if block.Kind == "chat" {
 			// A genuine conversational check-in, not board content - persisted
@@ -379,7 +380,23 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		persistEvent(h.db, session.ID, event, title)
 
 		return writeLine(event)
-	})
+	}
+
+	err := h.gemini.GenerateBoardStream(r.Context(), boardReq, onBoard)
+	if err != nil {
+		// GenerateBoardStream only ever returns an error when zero boards
+		// were produced - its own "if any { return nil }" check guarantees
+		// a single successfully-decoded board always makes it report
+		// overall success regardless of what happens afterward - so nothing
+		// has been persisted or shown to the client yet here, and a full
+		// retry can never duplicate or conflict with anything. The trigger
+		// observed repeatedly in testing was a transient Gemini stall
+		// hitting the generation timeout; a retry recovers from that
+		// cleanly instead of surfacing an error for what was really just a
+		// one-off hiccup.
+		log.Printf("generate board failed, retrying once: %v", err)
+		err = h.gemini.GenerateBoardStream(r.Context(), boardReq, onBoard)
+	}
 
 	if err != nil {
 		writeLine(map[string]string{"type": "error", "message": "failed to generate teaching content"})

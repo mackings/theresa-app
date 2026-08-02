@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -52,7 +53,15 @@ board is an object with:
   inline code wrapped in backticks (` + "`...`" + `), or be an entire fenced code block (using
   triple backticks). Keep each board's lines focused on one idea - not a wall of text. Every
   math expression must appear exactly once, fully resolved - never repeat a partially-worked
-  step across multiple lines.
+  step across multiple lines. Never merge a heading-like phrase into the start of a line -
+  put any heading in "title" instead - and never run two unrelated sentences together with
+  no natural break between them.
+  For a numbered or bulleted list, each item's marker and its text belong together on the
+  SAME array element, and a bare marker must never appear as its own separate element.
+  WRONG (marker separated from its item - never do this):
+  ["We look for two numbers that: 1", "Multiply to give c", "2", "Add up to give b"]
+  RIGHT (marker and text together, one item per element):
+  ["We look for two numbers that:", "1. Multiply to give c", "2. Add up to give b"]
 - "mermaid": (for kind "diagram") Mermaid diagram syntax - flowcharts or sequence diagrams
   for cycles, branches, or sequences of steps. Never use a diagram for a numeric graph or
   plot with axes - Mermaid cannot render that meaningfully. Describe a graph/plot in words
@@ -264,6 +273,9 @@ func normalizeBoard(b *models.BoardContent) bool {
 		b.Lines = sanitizeFallbackText(b.Title)
 		b.Title = ""
 	}
+	if b.Kind == "lines" && len(b.Lines) > 0 {
+		b.Lines = RepairOrphanedListMarkers(b.Lines)
+	}
 	if b.Kind == "diagram" && b.Mermaid == "" {
 		return false
 	}
@@ -271,6 +283,37 @@ func normalizeBoard(b *models.BoardContent) bool {
 		return false
 	}
 	return true
+}
+
+var bareListMarkerRe = regexp.MustCompile(`^(\d{1,2}|-)$`)
+
+// RepairOrphanedListMarkers defends against an observed Gemini quirk where a
+// numbered/bulleted list's marker occasionally ends up as its own bare
+// array element ("2" with nothing else) instead of prefixed onto its item's
+// text, despite the system prompt's explicit instruction and example
+// against it (prompt compliance alone isn't reliable - observed in practice
+// across repeated identical requests, sometimes clean, sometimes not).
+// Only handles the unambiguous case (a line that, trimmed, is nothing but
+// the marker itself) - a marker merged onto the END of the PRECEDING line's
+// text is a much more ambiguous pattern to detect safely (a line
+// legitimately ending in a number, like a computed value, would look
+// identical) and is deliberately left alone rather than risk mangling real
+// content.
+func RepairOrphanedListMarkers(lines []string) []string {
+	repaired := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if bareListMarkerRe.MatchString(trimmed) && i+1 < len(lines) {
+			marker := trimmed
+			if marker != "-" {
+				marker += "."
+			}
+			lines[i+1] = marker + " " + strings.TrimSpace(lines[i+1])
+			continue // drop this bare-marker line - its content moved onto the next
+		}
+		repaired = append(repaired, lines[i])
+	}
+	return repaired
 }
 
 // maxHistoryEvents bounds how many prior events get fed back as context -
