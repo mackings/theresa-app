@@ -23,7 +23,7 @@ func Connect(ctx context.Context, client *gemini.Client, model, resumptionHandle
 	config := &genai.LiveConnectConfig{
 		ResponseModalities: []genai.Modality{genai.ModalityAudio},
 		SystemInstruction:  genai.NewContentFromText(PersonaInstruction, genai.RoleUser),
-		Tools:              Tools,
+		Tools:              gemini.BoardTools,
 		SessionResumption:  &genai.SessionResumptionConfig{Handle: resumptionHandle},
 	}
 

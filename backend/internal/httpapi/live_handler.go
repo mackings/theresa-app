@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -440,7 +439,7 @@ func (rl *liveRelay) handleServerContent(content *genai.LiveServerContent) {
 
 func (rl *liveRelay) handleToolCall(toolCall *genai.LiveServerToolCall) {
 	for _, call := range toolCall.FunctionCalls {
-		board, ok := buildBoardContent(call.Name, call.Args)
+		board, ok := gemini.BuildBoardContent(call.Name, call.Args)
 
 		var response map[string]any
 		switch {
@@ -448,7 +447,7 @@ func (rl *liveRelay) handleToolCall(toolCall *genai.LiveServerToolCall) {
 			response = map[string]any{"error": fmt.Sprintf(
 				"%s call had empty or malformed arguments; retry with real content", call.Name)}
 
-		case boardKey(board) == rl.lastBoardKey:
+		case gemini.BoardKey(board) == rl.lastBoardKey:
 			// The exact same board as last time - reject rather than render
 			// a duplicate. Negative tool feedback (same mechanism as the
 			// malformed-args case above) is the only lever available here;
@@ -460,7 +459,7 @@ func (rl *liveRelay) handleToolCall(toolCall *genai.LiveServerToolCall) {
 
 		default:
 			response = map[string]any{"output": "ok"}
-			rl.lastBoardKey = boardKey(board)
+			rl.lastBoardKey = gemini.BoardKey(board)
 			rl.conn.WriteJSON(boardUpdateMessage(board))
 			rl.appendEvent(models.SessionEvent{Type: "board_update", Role: "assistant", Board: &board})
 			rl.maybeSetTitle(board)
@@ -475,13 +474,6 @@ func (rl *liveRelay) handleToolCall(toolCall *genai.LiveServerToolCall) {
 			log.Printf("respond to tool call failed: %v", err)
 		}
 	}
-}
-
-// boardKey fingerprints a board's actual content (not title, which the
-// model sometimes varies slightly even on an otherwise-identical repeat) for
-// the duplicate check above.
-func boardKey(b models.BoardContent) string {
-	return b.Kind + "|" + strings.Join(b.Lines, "\x00") + "|" + b.Mermaid
 }
 
 // maybeSetTitle derives and persists a session title from the first board
@@ -506,59 +498,6 @@ func (rl *liveRelay) maybeSetTitle(board models.BoardContent) {
 	rl.db.Collection("sessions").UpdateOne(ctx, bson.M{"_id": rl.session.ID}, bson.M{
 		"$set": bson.M{"title": title},
 	})
-}
-
-// buildBoardContent turns a Gemini function call into a models.BoardContent.
-// It reads fields directly off the args map (rather than round-tripping
-// through json.Marshal/Unmarshal into a struct, which would silently
-// discard type-mismatch errors on a field like "lines") and returns
-// ok=false for anything that doesn't yield real, usable content.
-func buildBoardContent(name string, args map[string]any) (models.BoardContent, bool) {
-	switch name {
-	case "show_working":
-		lines, ok := coerceStringArray(args["lines"])
-		if !ok || len(lines) == 0 {
-			return models.BoardContent{}, false
-		}
-		title, _ := args["title"].(string)
-		return models.BoardContent{Kind: "lines", Title: title, Lines: gemini.RepairOrphanedListMarkers(lines)}, true
-
-	case "draw_diagram":
-		mermaid, _ := args["mermaid"].(string)
-		if strings.TrimSpace(mermaid) == "" {
-			return models.BoardContent{}, false
-		}
-		title, _ := args["title"].(string)
-		return models.BoardContent{Kind: "diagram", Title: title, Mermaid: mermaid}, true
-
-	default:
-		log.Printf("unhandled tool call: %s", name)
-		return models.BoardContent{}, false
-	}
-}
-
-// coerceStringArray handles Gemini's preview-model quirk of occasionally
-// sending an array-typed argument JSON-encoded as a string instead of a
-// real array.
-func coerceStringArray(raw any) ([]string, bool) {
-	switch v := raw.(type) {
-	case []any:
-		out := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out, len(out) > 0
-	case string:
-		var arr []string
-		if err := json.Unmarshal([]byte(v), &arr); err != nil {
-			return nil, false
-		}
-		return arr, len(arr) > 0
-	default:
-		return nil, false
-	}
 }
 
 // saveResumptionHandle persists the latest Gemini resumption handle onto the
