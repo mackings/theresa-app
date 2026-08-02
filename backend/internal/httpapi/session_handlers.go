@@ -323,11 +323,20 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.gemini.GenerateBoardStream(r.Context(), boardReq, func(block models.BoardContent) error {
-		event := models.SessionEvent{Seq: seq, Type: "board_update", Role: "assistant", Board: &block, Timestamp: time.Now()}
+		var event models.SessionEvent
+		if block.Kind == "chat" {
+			// A genuine conversational check-in, not board content - persisted
+			// as a real chat message so the frontend renders it as an actual
+			// assistant bubble instead of folding it into the "explained on
+			// the board" step-count indicator.
+			event = models.SessionEvent{Seq: seq, Type: "chat_message", Role: "assistant", Text: block.Message, Timestamp: time.Now()}
+		} else {
+			event = models.SessionEvent{Seq: seq, Type: "board_update", Role: "assistant", Board: &block, Timestamp: time.Now()}
+		}
 		seq++
 
 		var title string
-		if needsTitle {
+		if needsTitle && block.Kind != "chat" {
 			title = deriveTitle(block, req.Text)
 			needsTitle = false
 		}

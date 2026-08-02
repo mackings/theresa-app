@@ -35,10 +35,18 @@ type SessionEvent struct {
 // BoardContent is one whole "board's worth" of content - either a set of
 // typed lines (prose/math/code) or a single diagram. Kind is the
 // discriminator; the frontend renders exactly one of Whiteboard/DiagramBoard
-// based on it.
+// based on it. A third kind, "chat", isn't board content at all - it's a
+// sentinel PostMessage recognizes and persists as a chat_message event
+// instead of a board_update (see session_handlers.go), used for a genuine
+// conversational check-in between batches of teaching. Message only applies
+// to that kind.
 type BoardContent struct {
-	Kind    string   `bson:"kind" json:"kind"` // "lines" | "diagram"
+	Kind    string   `bson:"kind" json:"kind"` // "lines" | "diagram" | "chat"
 	Title   string   `bson:"title,omitempty" json:"title,omitempty"`
 	Lines   []string `bson:"lines,omitempty" json:"lines,omitempty"`
 	Mermaid string   `bson:"mermaid,omitempty" json:"mermaid,omitempty"`
+	// Message is decoded from Gemini's streamed JSON response (kind "chat"
+	// only) but never persisted as board content - PostMessage reroutes it
+	// into a chat_message event's plain Text field instead, so bson is "-".
+	Message string `bson:"-" json:"message,omitempty"`
 }

@@ -17,7 +17,8 @@ const SUGGESTIONS = [
 
 type Turn =
   | { role: "user"; seq: number; text: string }
-  | { role: "assistant"; seq: number; stepCount: number };
+  | { role: "assistant"; kind: "board"; seq: number; stepCount: number }
+  | { role: "assistant"; kind: "chat"; seq: number; text: string };
 
 function groupIntoTurns(events: SessionEvent[]): Turn[] {
   const sorted = [...events].sort((a, b) => a.seq - b.seq);
@@ -29,11 +30,18 @@ function groupIntoTurns(events: SessionEvent[]): Turn[] {
       continue;
     }
 
+    // A real conversational check-in - its own bubble with real text, never
+    // folded into the board step-count indicator below.
+    if (event.type === "chat_message") {
+      turns.push({ role: "assistant", kind: "chat", seq: event.seq, text: event.text ?? "" });
+      continue;
+    }
+
     const last = turns[turns.length - 1];
-    if (last?.role === "assistant") {
+    if (last?.role === "assistant" && last.kind === "board") {
       last.stepCount += 1;
     } else {
-      turns.push({ role: "assistant", seq: event.seq, stepCount: 1 });
+      turns.push({ role: "assistant", kind: "board", seq: event.seq, stepCount: 1 });
     }
   }
 
@@ -105,6 +113,8 @@ export function ChatPanel({
         {turns.map((turn) =>
           turn.role === "user" ? (
             <MessageBubble key={turn.seq} role="user" text={turn.text} />
+          ) : turn.kind === "chat" ? (
+            <MessageBubble key={turn.seq} role="assistant" text={turn.text} />
           ) : (
             <MessageBubble key={turn.seq} role="assistant" stepCount={turn.stepCount} />
           )
