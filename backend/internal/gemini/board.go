@@ -91,17 +91,26 @@ type BoardRequest struct {
 	Text         string
 	FileURI      string
 	FileMimeType string
+	// History is every prior turn of this session, oldest first - see
+	// HistoryFromEvents. Without this, each call was a completely isolated,
+	// context-free request: Gemini had no idea what had already been taught
+	// or asked, which is why a vague follow-up ("yes, another example",
+	// "can you show me another one") would land on an unrelated topic, and
+	// why the student's chat replies never actually steered anything - the
+	// model was answering each message in a vacuum, not having a
+	// conversation.
+	History []*genai.Content
 }
 
 // GenerateBoardStream asks Gemini to teach req.Text (optionally grounded in
-// an uploaded file), calling onBoard for each board as soon as Gemini
-// finishes generating it - instead of buffering the entire multi-step
-// response before returning anything. This is the exact same prompt/schema/
-// model call as a one-shot request would use; only how the response is
-// consumed changes (decoded element-by-element as it streams in, via the
-// standard json.Decoder array-streaming pattern over a pipe fed by
-// GenerateContentStream's chunks), so teaching content/order is unaffected -
-// only how soon each step becomes visible.
+// an uploaded file and/or prior conversation history), calling onBoard for
+// each board as soon as Gemini finishes generating it - instead of
+// buffering the entire multi-step response before returning anything. This
+// is the exact same prompt/schema/model call as a one-shot request would
+// use; only how the response is consumed changes (decoded element-by-element
+// as it streams in, via the standard json.Decoder array-streaming pattern
+// over a pipe fed by GenerateContentStream's chunks), so teaching
+// content/order is unaffected - only how soon each step becomes visible.
 //
 // If Gemini's response isn't valid JSON at all, the full accumulated text is
 // wrapped as a single lines-board and passed to onBoard, same fallback
@@ -111,7 +120,7 @@ func (c *Client) GenerateBoardStream(ctx context.Context, req BoardRequest, onBo
 	if req.FileURI != "" {
 		parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: req.FileURI, MIMEType: req.FileMimeType}})
 	}
-	content := genai.NewContentFromParts(parts, genai.RoleUser)
+	contents := append(append([]*genai.Content{}, req.History...), genai.NewContentFromParts(parts, genai.RoleUser))
 
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemInstruction, genai.RoleUser),
@@ -127,7 +136,7 @@ func (c *Client) GenerateBoardStream(ctx context.Context, req BoardRequest, onBo
 	var streamErr error
 
 	go func() {
-		for resp, err := range c.genai.Models.GenerateContentStream(genCtx, c.textModel, []*genai.Content{content}, config) {
+		for resp, err := range c.genai.Models.GenerateContentStream(genCtx, c.textModel, contents, config) {
 			if err != nil {
 				streamErr = err
 				pw.CloseWithError(err)
@@ -262,4 +271,70 @@ func normalizeBoard(b *models.BoardContent) bool {
 		return false
 	}
 	return true
+}
+
+// maxHistoryEvents bounds how many prior events get fed back as context -
+// unbounded growth would make every later message in a long session slower
+// and more expensive, and a Gemini call has its own context-window limits
+// regardless. Recent history matters far more than a session's very first
+// exchange for keeping a follow-up coherent.
+const maxHistoryEvents = 30
+
+// HistoryFromEvents converts a session's persisted event log into the
+// alternating user/model turns BoardRequest.History needs for genuine
+// conversational continuity. Without this, every call to GenerateBoardStream
+// was a completely isolated, context-free request - see BoardRequest's doc
+// comment. board_update and chat_message (both always the assistant's own
+// output) map to Gemini's "model" role; user_text maps to "user". A
+// board_update's content is reconstructed as plain readable text (title +
+// lines, or a mermaid block) rather than re-serializing the original JSON
+// shape - Gemini only needs to know what was already covered, not the
+// literal wire format of its own prior output.
+func HistoryFromEvents(events []models.SessionEvent) []*genai.Content {
+	if len(events) > maxHistoryEvents {
+		events = events[len(events)-maxHistoryEvents:]
+	}
+
+	var history []*genai.Content
+	for _, e := range events {
+		switch e.Type {
+		case "user_text":
+			if e.Text == "" {
+				continue
+			}
+			history = append(history, genai.NewContentFromText(e.Text, genai.RoleUser))
+		case "chat_message":
+			if e.Text == "" {
+				continue
+			}
+			history = append(history, genai.NewContentFromText(e.Text, genai.RoleModel))
+		case "board_update":
+			if e.Board == nil {
+				continue
+			}
+			if text := boardContentAsText(*e.Board); text != "" {
+				history = append(history, genai.NewContentFromText(text, genai.RoleModel))
+			}
+		}
+	}
+	return history
+}
+
+func boardContentAsText(b models.BoardContent) string {
+	var sb strings.Builder
+	if b.Title != "" {
+		sb.WriteString(b.Title)
+		sb.WriteString("\n")
+	}
+	if b.Kind == "diagram" {
+		sb.WriteString(b.Mermaid)
+		return sb.String()
+	}
+	for i, line := range b.Lines {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(line)
+	}
+	return sb.String()
 }
