@@ -10,6 +10,7 @@ import { BoardAudioSync } from "@/lib/board/audioSync";
 import { SpeakingOrb, OrbState } from "@/components/voice/SpeakingOrb";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { BoardContentBlock } from "@/types/board";
 import { setActiveVoiceSession } from "@/lib/activeVoiceSession";
 
@@ -33,6 +34,7 @@ export function VoiceControls({
   const [showTextInput, setShowTextInput] = useState(false);
   const [outOfCredits, setOutOfCredits] = useState(false);
   const [lowCreditsToast, setLowCreditsToast] = useState<number | null>(null);
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
 
   const connectionRef = useRef<LiveSessionConnection | null>(null);
   const micRef = useRef<MicCapture | null>(null);
@@ -232,7 +234,7 @@ export function VoiceControls({
           </button>
           <button
             type="button"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => setConfirmingEnd(true)}
             aria-label="End session"
             className="flex h-12 w-12 items-center justify-center rounded-[var(--radius-full)] bg-[var(--color-danger)] text-white shadow-[var(--shadow-sm)] transition-transform hover:scale-105"
           >
@@ -240,6 +242,16 @@ export function VoiceControls({
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingEnd}
+        title="End this voice session?"
+        description="Theresa will stop talking and you'll be taken back to the dashboard."
+        confirmLabel="End session"
+        cancelLabel="Stay"
+        onConfirm={() => router.push("/dashboard")}
+        onCancel={() => setConfirmingEnd(false)}
+      />
     </div>
   );
 }
