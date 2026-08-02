@@ -61,6 +61,24 @@ short, natural turn. Don't call show_working or draw_diagram yet, just greet the
 wait for their reply.`, name)
 }
 
+// ContinuingPrompt is sent (alongside the session's prior turns as real
+// history - see gemini.HistoryFromEvents and Session.SendTurns) the moment a
+// session with existing text-mode history switches to voice with no
+// document attached. Without this, HandleConnection had nothing to send at
+// all in this exact case (not brand new, no document), so Theresa opened
+// with zero awareness of anything already discussed - which read exactly
+// like a random, unrelated conversation starting instead of a continuation.
+func ContinuingPrompt(name string) string {
+	return fmt.Sprintf(`You're continuing an existing tutoring session with %s that started in
+text mode, now switched to voice - the prior turns of that conversation are attached above as
+real history, not a document. Don't re-introduce yourself or greet them like this is a brand
+new conversation - instead, in your own warm Pidgin-inflected voice, briefly pick up where
+things left off (a short natural line acknowledging you're continuing on voice now,
+referencing what was already being discussed) and wait for their reply, or carry on teaching
+with show_working if the last thing covered was clearly mid-explanation. Keep your opening
+turn natural and not too long.`, name)
+}
+
 // GreetingWithDocumentPrompt is used instead of GreetingPrompt whenever this
 // is the first time this session's content is reaching the Live/voice side
 // and a document is attached. Unlike text mode's GenerateBoardStream (which

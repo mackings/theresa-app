@@ -42,9 +42,16 @@ func (s *Session) SendAudio(pcm16 []byte) error {
 }
 
 func (s *Session) SendText(text string) error {
-	return s.genai.SendClientContent(genai.LiveClientContentInput{
-		Turns: []*genai.Content{genai.NewContentFromText(text, genai.RoleUser)},
-	})
+	return s.SendTurns([]*genai.Content{genai.NewContentFromText(text, genai.RoleUser)})
+}
+
+// SendTurns sends one or more turns as the client content, in order - used
+// to open a voice connection with prior conversation history attached (see
+// gemini.HistoryFromEvents) rather than a single isolated text message, so
+// switching from text to voice mid-session doesn't start Theresa off with
+// zero awareness of what was already discussed.
+func (s *Session) SendTurns(turns []*genai.Content) error {
+	return s.genai.SendClientContent(genai.LiveClientContentInput{Turns: turns})
 }
 
 func (s *Session) Receive() (*genai.LiveServerMessage, error) {

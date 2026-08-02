@@ -85,3 +85,16 @@ func TestBuildBoardContent(t *testing.T) {
 		}
 	})
 }
+
+func TestBoardKey(t *testing.T) {
+	a, _ := buildBoardContent("show_working", map[string]any{"title": "Step 1", "lines": []any{"line one", "line two"}})
+	b, _ := buildBoardContent("show_working", map[string]any{"title": "Step 1 (retry)", "lines": []any{"line one", "line two"}})
+	c, _ := buildBoardContent("show_working", map[string]any{"title": "Step 1", "lines": []any{"line one", "a different line"}})
+
+	if boardKey(a) != boardKey(b) {
+		t.Fatalf("identical lines with a different title should key the same (title varies on repeats in practice): %q != %q", boardKey(a), boardKey(b))
+	}
+	if boardKey(a) == boardKey(c) {
+		t.Fatalf("genuinely different lines should not key the same: %q", boardKey(a))
+	}
+}
