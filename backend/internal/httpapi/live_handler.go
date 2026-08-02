@@ -206,6 +206,15 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 			if err := liveSession.SendText(live.GreetingPrompt(user.Name)); err != nil {
 				log.Printf("failed to send opening greeting: %v", err)
 			}
+		} else {
+			// No document, but this session already has prior (text-mode)
+			// history - send it as real turns, not just a bare instruction,
+			// so switching to voice mid-session actually continues the same
+			// conversation instead of starting from zero awareness.
+			turns := append(gemini.HistoryFromEvents(session.Events), genai.NewContentFromText(live.ContinuingPrompt(user.Name), genai.RoleUser))
+			if err := liveSession.SendTurns(turns); err != nil {
+				log.Printf("failed to send continuation history: %v", err)
+			}
 		}
 	}
 
@@ -249,6 +258,15 @@ type liveRelay struct {
 	model            string
 	resumptionHandle string
 	titled           bool
+
+	// lastBoardKey guards against a real, observed failure mode: nothing
+	// bounds how many times the model can call show_working/draw_diagram
+	// with the exact same content in a row within one open-ended Live
+	// connection, unlike text mode's GenerateBoardStream which at least has
+	// a hard per-call time ceiling (maxGenerateBoardWait). Observed in
+	// practice as the same board repeated many times in a row. See
+	// handleToolCall.
+	lastBoardKey string
 
 	mu   sync.RWMutex
 	live *live.Session
@@ -424,8 +442,25 @@ func (rl *liveRelay) handleToolCall(toolCall *genai.LiveServerToolCall) {
 	for _, call := range toolCall.FunctionCalls {
 		board, ok := buildBoardContent(call.Name, call.Args)
 
-		response := map[string]any{"output": "ok"}
-		if ok {
+		var response map[string]any
+		switch {
+		case !ok:
+			response = map[string]any{"error": fmt.Sprintf(
+				"%s call had empty or malformed arguments; retry with real content", call.Name)}
+
+		case boardKey(board) == rl.lastBoardKey:
+			// The exact same board as last time - reject rather than render
+			// a duplicate. Negative tool feedback (same mechanism as the
+			// malformed-args case above) is the only lever available here;
+			// unlike text mode there's no call-level timeout to fall back
+			// on to break a repetition loop, since this is one open-ended
+			// connection, not a single bounded generation call.
+			response = map[string]any{"error": fmt.Sprintf(
+				"%s call repeated the exact same content as your last call - move on to something new, or stop and ask the student a question instead", call.Name)}
+
+		default:
+			response = map[string]any{"output": "ok"}
+			rl.lastBoardKey = boardKey(board)
 			rl.conn.WriteJSON(boardUpdateMessage(board))
 			rl.appendEvent(models.SessionEvent{Type: "board_update", Role: "assistant", Board: &board})
 			rl.maybeSetTitle(board)
@@ -434,15 +469,19 @@ func (rl *liveRelay) handleToolCall(toolCall *genai.LiveServerToolCall) {
 			// output) and our tiny tool-response acknowledgment (billed as
 			// text input). Not exact token counts - see EstimateTextTokens.
 			rl.addTextChars(toolResponseChars, boardContentChars(board))
-		} else {
-			response = map[string]any{"error": fmt.Sprintf(
-				"%s call had empty or malformed arguments; retry with real content", call.Name)}
 		}
 
 		if err := rl.getLive().RespondToTool(call.ID, call.Name, response); err != nil {
 			log.Printf("respond to tool call failed: %v", err)
 		}
 	}
+}
+
+// boardKey fingerprints a board's actual content (not title, which the
+// model sometimes varies slightly even on an otherwise-identical repeat) for
+// the duplicate check above.
+func boardKey(b models.BoardContent) string {
+	return b.Kind + "|" + strings.Join(b.Lines, "\x00") + "|" + b.Mermaid
 }
 
 // maybeSetTitle derives and persists a session title from the first board
