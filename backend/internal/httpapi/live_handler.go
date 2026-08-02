@@ -482,7 +482,7 @@ func buildBoardContent(name string, args map[string]any) (models.BoardContent, b
 			return models.BoardContent{}, false
 		}
 		title, _ := args["title"].(string)
-		return models.BoardContent{Kind: "lines", Title: title, Lines: lines}, true
+		return models.BoardContent{Kind: "lines", Title: title, Lines: gemini.RepairOrphanedListMarkers(lines)}, true
 
 	case "draw_diagram":
 		mermaid, _ := args["mermaid"].(string)
