@@ -359,7 +359,25 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// lastBoardKey guards against the same degenerate-repetition failure
+	// class voice's handleToolCall now guards against (see boardKey there) -
+	// observed here too: a single GenerateBoardStream call can churn out
+	// many near-identical repeated boards well within maxGenerateBoardWait,
+	// so the time-based cap alone never catches it. Text mode's response is
+	// a one-shot JSON array already fully committed to by the model, so
+	// there's no tool-response feedback channel to push back with the way
+	// voice has - the best available fix is to silently skip persisting an
+	// exact repeat rather than show the student a wall of duplicates.
+	var lastBoardKey string
 	onBoard := func(block models.BoardContent) error {
+		if block.Kind != "chat" {
+			key := boardKey(block)
+			if key == lastBoardKey {
+				return nil
+			}
+			lastBoardKey = key
+		}
+
 		var event models.SessionEvent
 		if block.Kind == "chat" {
 			// A genuine conversational check-in, not board content - persisted
