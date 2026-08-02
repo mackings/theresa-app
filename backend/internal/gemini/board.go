@@ -2,9 +2,8 @@ package gemini
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -14,87 +13,58 @@ import (
 	"theresa/backend/internal/models"
 )
 
-// maxGenerateBoardWait bounds a single generation call. Gemini occasionally
-// gets stuck in a degenerate repetition loop - observed in practice, a
-// meta-question ("what is this built on?") produced four minutes of repeated
-// boilerplate before finally stopping on its own. Without a ceiling, a single
-// pathological generation leaves the user staring at "Theresa is working on
-// it" for minutes with no way to tell it apart from a slow-but-healthy one;
-// cutting it off falls through to the same fallback path a malformed
-// response already takes.
-const maxGenerateBoardWait = 45 * time.Second
+// maxBoardsPerTurn bounds how many function calls one PostMessage turn will
+// make before stopping regardless of what the model wants to do next - a
+// safety net against a runaway loop that never calls chat_checkin, mirroring
+// voice's own implicit pacing (persona.go's "after roughly 2-3 show_working
+// calls, stop and ask a real question").
+const maxBoardsPerTurn = 8
 
-const systemInstruction = `You are a patient, clear tutor. Teach the user's question or
-document step by step, breaking the explanation into a sequence of "boards" suitable for
-a visual teaching board. Use standard English only - no slang, no persona, no regional
+// maxSingleCallWait bounds one GenerateContent call - now asking for a
+// single board or a short reply, not an entire multi-step lesson planned and
+// validated as one large structured response, so it needs nowhere near the
+// old one-shot budget. A stall here costs at most this long, not the whole
+// turn - see the "any" check in GenerateBoardStream below.
+const maxSingleCallWait = 20 * time.Second
+
+const incrementalSystemInstruction = `You are a patient, clear tutor. Teach the user's question
+or document step by step. Use standard English only - no slang, no persona, no regional
 dialect.
 
-If asked about yourself - what you're built on, how you work, whether you're an AI - give
-one short, honest board: you're an AI tutor that teaches step by step on a live board. Do
-not invent specific technical details you don't actually know, and do not pad the answer
-with restating the question or generic filler about your purpose. One or two plain
-sentences is enough; then wait for what the student actually wants to learn.
+If asked about yourself - what you're built on, how you work, whether you're an AI - give one
+short, honest answer via show_working: you're an AI tutor that teaches step by step on a live
+board. Do not invent specific technical details you don't actually know, and do not pad the
+answer with restating the question or generic filler about your purpose. One or two plain
+sentences is enough; then call chat_checkin to wait for what the student actually wants to
+learn.
+
+You have three tools:
+- show_working(title?, lines): show a board's worth of typed working - prose, math, and/or
+  code. Call it once per board (you can call it again later for the next board), not once per
+  line. A line may contain inline math wrapped in single dollar signs ($...$), inline code
+  wrapped in backticks (` + "`...`" + `), or be an entire fenced code block. Keep each board's lines
+  focused on one idea - not a wall of text. Every math expression must appear exactly once,
+  fully resolved - never repeat a partially-worked step across multiple lines. Never merge a
+  heading-like phrase into the start of a line - use "title" for that instead - and never run
+  two unrelated sentences together with no natural break between them. For a numbered or
+  bulleted list, each item's marker and its text belong together on the SAME line, and a bare
+  marker must never appear as its own separate line - wrong: ["We look for two numbers that:
+  1", "Multiply to give c", "2", "Add up to give b"], right: ["We look for two numbers that:",
+  "1. Multiply to give c", "2. Add up to give b"].
+- draw_diagram(title?, mermaid): draw a Mermaid diagram - only for a genuine cycle, branch, or
+  sequence of steps, never a numeric graph or plot (Mermaid can't render axes or plotted data -
+  describe that in words via show_working instead).
+- chat_checkin(message): pause to ask the student a real, genuine question - never a summary of
+  what you just covered ("we covered X, Y, Z" is not engaging, it's a recap). Ask something
+  that invites an actual reply: whether they want you to keep going, whether a specific part
+  made sense, or what they'd like to focus on next.
 
 IMPORTANT - pace yourself, don't dump everything at once: even when teaching from a large
-uploaded document, cover at most 3-5 boards of real material, then STOP by emitting one
-final "chat" board (see below) instead of continuing straight through the entire source.
-The student needs a chance to actually respond before you keep going - assume there's more
-material to cover on a later turn, don't try to fit a whole course into one response.
-
-Respond with ONLY a JSON array of boards, shown to the student one after another. Each
-board is an object with:
-- "kind": "lines" (typed prose/math/code), "diagram" (a Mermaid diagram), or "chat" (a real
-  conversational message shown in the chat panel, not written to the board)
-- "title": a short optional heading for this board - a few words at most, never a full
-  sentence or the explanation itself. The explanation always belongs in "lines". Not used
-  for kind "chat".
-- "lines": (for kind "lines") REQUIRED, an array of strings, each a line of the
-  explanation. A line may contain inline math wrapped in single dollar signs ($...$),
-  inline code wrapped in backticks (` + "`...`" + `), or be an entire fenced code block (using
-  triple backticks). Keep each board's lines focused on one idea - not a wall of text. Every
-  math expression must appear exactly once, fully resolved - never repeat a partially-worked
-  step across multiple lines. Never merge a heading-like phrase into the start of a line -
-  put any heading in "title" instead - and never run two unrelated sentences together with
-  no natural break between them.
-  For a numbered or bulleted list, each item's marker and its text belong together on the
-  SAME array element, and a bare marker must never appear as its own separate element.
-  WRONG (marker separated from its item - never do this):
-  ["We look for two numbers that: 1", "Multiply to give c", "2", "Add up to give b"]
-  RIGHT (marker and text together, one item per element):
-  ["We look for two numbers that:", "1. Multiply to give c", "2. Add up to give b"]
-- "mermaid": (for kind "diagram") Mermaid diagram syntax - flowcharts or sequence diagrams
-  for cycles, branches, or sequences of steps. Never use a diagram for a numeric graph or
-  plot with axes - Mermaid cannot render that meaningfully. Describe a graph/plot in words
-  via "lines" instead.
-- "message": (for kind "chat") REQUIRED, a short, genuinely conversational line - a real
-  question or check-in, never a summary of what you just taught ("we covered X, Y, Z" is
-  not engaging, it's a recap). Ask something that invites an actual reply: whether they want
-  you to keep going, whether a specific part made sense, or what they'd like to focus on
-  next. End your response with exactly one "chat" board whenever you pause - never end on a
-  "lines"/"diagram" board with nothing inviting the student to respond.
-
-Do not include any text outside the JSON array.`
-
-// boardUnitSchema describes one board (an object discriminated by "kind"),
-// used both as the array item schema for M3's one-shot response below and
-// conceptually mirrored (as two separate per-tool schemas) by M4's live
-// show_working/draw_diagram tools.
-var boardUnitSchema = &genai.Schema{
-	Type:     genai.TypeObject,
-	Required: []string{"kind"},
-	Properties: map[string]*genai.Schema{
-		"kind":    {Type: genai.TypeString, Enum: []string{"lines", "diagram", "chat"}},
-		"title":   {Type: genai.TypeString},
-		"lines":   {Type: genai.TypeArray, Items: &genai.Schema{Type: genai.TypeString}},
-		"mermaid": {Type: genai.TypeString},
-		"message": {Type: genai.TypeString},
-	},
-}
-
-var boardResponseSchema = &genai.Schema{
-	Type:  genai.TypeArray,
-	Items: boardUnitSchema,
-}
+uploaded document, cover at most 3-5 boards of real material, then call chat_checkin instead
+of continuing straight through the entire source. The student needs a chance to actually
+respond before you keep going - assume there's more material to cover on a later turn. Always
+call chat_checkin when you pause - never stop mid-explanation with nothing inviting the
+student to respond.`
 
 type BoardRequest struct {
 	Text         string
@@ -112,18 +82,25 @@ type BoardRequest struct {
 }
 
 // GenerateBoardStream asks Gemini to teach req.Text (optionally grounded in
-// an uploaded file and/or prior conversation history), calling onBoard for
-// each board as soon as Gemini finishes generating it - instead of
-// buffering the entire multi-step response before returning anything. This
-// is the exact same prompt/schema/model call as a one-shot request would
-// use; only how the response is consumed changes (decoded element-by-element
-// as it streams in, via the standard json.Decoder array-streaming pattern
-// over a pipe fed by GenerateContentStream's chunks), so teaching
-// content/order is unaffected - only how soon each step becomes visible.
+// an uploaded file and/or prior conversation history) via function calling -
+// one show_working/draw_diagram call per board, exactly the same mechanism
+// voice already used successfully - instead of the old approach of asking
+// for an entire multi-step lesson as one large structured JSON array in a
+// single call. That approach required the model to effectively plan and
+// validate the whole response before anything could render, which was both
+// slower (nothing shows until the entire structure is ready, unlike a single
+// small function call) and less reliable (a big structured-output call is
+// more prone to stalling/looping - the exact "context deadline exceeded"
+// failures chased throughout this session's testing). onBoard is called
+// once per successful function call, in order, same external contract as
+// before so PostMessage's caller-side logic didn't need to change.
 //
-// If Gemini's response isn't valid JSON at all, the full accumulated text is
-// wrapped as a single lines-board and passed to onBoard, same fallback
-// behavior as the previous one-shot implementation.
+// Each individual call gets its own maxSingleCallWait budget. If a call
+// fails after at least one board was already shown this turn, that's
+// treated as a graceful stopping point (return nil) rather than a hard
+// failure - a partial, real answer is better than discarding it to retry
+// the whole turn. Only an error before anything was shown propagates up,
+// matching the invariant PostMessage's retry-once logic depends on.
 func (c *Client) GenerateBoardStream(ctx context.Context, req BoardRequest, onBoard func(models.BoardContent) error) error {
 	parts := []*genai.Part{{Text: req.Text}}
 	if req.FileURI != "" {
@@ -132,79 +109,84 @@ func (c *Client) GenerateBoardStream(ctx context.Context, req BoardRequest, onBo
 	contents := append(append([]*genai.Content{}, req.History...), genai.NewContentFromParts(parts, genai.RoleUser))
 
 	config := &genai.GenerateContentConfig{
-		SystemInstruction: genai.NewContentFromText(systemInstruction, genai.RoleUser),
-		ResponseMIMEType:  "application/json",
-		ResponseSchema:    boardResponseSchema,
+		SystemInstruction: genai.NewContentFromText(incrementalSystemInstruction, genai.RoleUser),
+		Tools:             TextTools,
 	}
 
-	genCtx, cancel := context.WithTimeout(ctx, maxGenerateBoardWait)
-	defer cancel()
+	producedAny := false
+	lastKey := ""
 
-	pr, pw := io.Pipe()
-	var fullText strings.Builder
-	var streamErr error
-
-	go func() {
-		for resp, err := range c.genai.Models.GenerateContentStream(genCtx, c.textModel, contents, config) {
-			if err != nil {
-				streamErr = err
-				pw.CloseWithError(err)
-				return
+	for i := 0; i < maxBoardsPerTurn; i++ {
+		callCtx, cancel := context.WithTimeout(ctx, maxSingleCallWait)
+		resp, err := c.genai.Models.GenerateContent(callCtx, c.textModel, contents, config)
+		cancel()
+		if err != nil {
+			if producedAny {
+				return nil
 			}
-			chunk := resp.Text()
-			fullText.WriteString(chunk)
-			if _, werr := pw.Write([]byte(chunk)); werr != nil {
-				return
-			}
+			return fmt.Errorf("generate board: %w", err)
 		}
-		pw.Close()
-	}()
 
-	decoder := json.NewDecoder(pr)
-	opened := false
-	if tok, err := decoder.Token(); err == nil {
-		delim, ok := tok.(json.Delim)
-		opened = ok && delim == '['
-	}
-
-	any := false
-	if opened {
-		for decoder.More() {
-			var b models.BoardContent
-			if err := decoder.Decode(&b); err != nil {
-				break
-			}
-			if normalizeBoard(&b) {
-				any = true
-				if err := onBoard(b); err != nil {
-					io.Copy(io.Discard, pr) //nolint:errcheck // best-effort drain to release the producer goroutine
+		calls := resp.FunctionCalls()
+		if len(calls) == 0 {
+			// No function call - the model responded with plain text instead
+			// (or nothing usable). Treat any text as a fallback board and
+			// stop; this is also how a turn naturally ends if the model has
+			// nothing more to add without calling chat_checkin.
+			if text := strings.TrimSpace(resp.Text()); text != "" {
+				if err := onBoard(models.BoardContent{Kind: "lines", Lines: sanitizeFallbackText(text)}); err != nil {
 					return err
 				}
+				producedAny = true
 			}
+			break
+		}
+
+		stop := false
+		for _, call := range calls {
+			board, ok := BuildBoardContent(call.Name, call.Args)
+
+			var response map[string]any
+			switch {
+			case !ok:
+				response = map[string]any{"error": fmt.Sprintf(
+					"%s call had empty or malformed arguments; retry with real content", call.Name)}
+
+			case BoardKey(board) == lastKey:
+				response = map[string]any{"error": fmt.Sprintf(
+					"%s call repeated the exact same content as your last call - move on to something new, or call chat_checkin to pause instead", call.Name)}
+
+			default:
+				response = map[string]any{"output": "ok"}
+				lastKey = BoardKey(board)
+				if err := onBoard(board); err != nil {
+					return err
+				}
+				producedAny = true
+				if call.Name == "chat_checkin" {
+					stop = true
+				}
+			}
+
+			contents = append(contents,
+				genai.NewContentFromFunctionCall(call.Name, call.Args, genai.RoleModel),
+				genai.NewContentFromFunctionResponse(call.Name, response, genai.RoleUser),
+			)
+		}
+		if stop {
+			break
 		}
 	}
 
-	// Drain any remaining stream output so the producer goroutine's next
-	// write never blocks forever on a reader nobody's servicing anymore
-	// (e.g. we stopped early because of a malformed array element) - and,
-	// for the invalid-JSON fallback path below, so fullText is guaranteed
-	// complete by the time we read it (the goroutine appends to fullText
-	// before writing each chunk to the pipe, and only closes pw as its very
-	// last action, so draining to a closed pipe means fullText is done too).
-	io.Copy(io.Discard, pr) //nolint:errcheck
-
-	if any {
-		return nil
+	if !producedAny {
+		return errors.New("generate board: no usable content produced")
 	}
-	if streamErr != nil {
-		return fmt.Errorf("generate board: %w", streamErr)
-	}
-	return onBoard(models.BoardContent{Kind: "lines", Lines: sanitizeFallbackText(fullText.String())})
+	return nil
 }
 
 const maxFallbackChars = 600
 
-// sanitizeFallbackText turns raw non-JSON model output into a few
+// sanitizeFallbackText turns raw non-function-call model output into a few
 // board-sized lines instead of one giant unreadable blob. Protects both the
 // Board's character-by-character typewriter reveal (a multi-thousand-
 // character single line would take minutes) and anything deriving a title
@@ -213,15 +195,6 @@ const maxFallbackChars = 600
 // content, the kind of failure this whole fallback path exists to survive.
 func sanitizeFallbackText(text string) []string {
 	trimmed := strings.TrimSpace(text)
-
-	// The response never got further than raw JSON syntax - a truncated
-	// array before even one field closed, or a repetition loop cut off
-	// mid-string by the generation timeout. What's left is JSON noise, not
-	// prose worth showing verbatim (observed in practice: literal "[", "{",
-	// "\"kind\": \"lines\"," rendered as board text).
-	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
-		return []string{"Sorry, I had trouble putting together an answer for that - try asking again or rephrasing."}
-	}
 
 	if len(trimmed) > maxFallbackChars {
 		trimmed = trimmed[:maxFallbackChars]
@@ -250,39 +223,6 @@ func sanitizeFallbackText(text string) []string {
 		return []string{"Sorry, I couldn't put together a clear answer for that - try rephrasing?"}
 	}
 	return lines
-}
-
-// normalizeBoard defends against a model putting the actual explanation into
-// "title" instead of "lines" (observed in practice despite the schema/prompt
-// both steering it toward "lines") - without this, a "lines" board with no
-// lines renders as an empty board with nothing to type out. The title is run
-// through the same sanitizeFallbackText used for invalid-JSON responses
-// rather than moved over verbatim: a title is supposed to be "a few words at
-// most" per the system prompt, but a degenerate/repetitive model response
-// can still be syntactically valid JSON while dumping several thousand
-// characters of repeated boilerplate into "title" (observed in practice -
-// board.go's own generation timeout exists for the same underlying failure
-// mode when it breaks the JSON instead) - sanitizeFallbackText's length cap
-// and line-splitting bounds that same runaway text here too.
-// normalizeBoard returns false for a board that's unrecoverable (a "diagram"
-// with no real mermaid content - observed in practice as keyword-salad
-// dumped into "title" instead), which the caller drops rather than showing
-// broken/garbage content.
-func normalizeBoard(b *models.BoardContent) bool {
-	if b.Kind == "lines" && len(b.Lines) == 0 && b.Title != "" {
-		b.Lines = sanitizeFallbackText(b.Title)
-		b.Title = ""
-	}
-	if b.Kind == "lines" && len(b.Lines) > 0 {
-		b.Lines = RepairOrphanedListMarkers(b.Lines)
-	}
-	if b.Kind == "diagram" && b.Mermaid == "" {
-		return false
-	}
-	if b.Kind == "chat" && strings.TrimSpace(b.Message) == "" {
-		return false
-	}
-	return true
 }
 
 var bareListMarkerRe = regexp.MustCompile(`^(\d{1,2}|-)$`)
