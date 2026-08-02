@@ -204,10 +204,19 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       )}
 
       <div className="flex items-center justify-between border-t border-[var(--color-border)] px-3 py-3">
-        <div className="flex min-w-0 items-center gap-2 text-sm text-[var(--color-text-primary)]">
+        <button
+          type="button"
+          onClick={() =>
+            guardedNavigate(() => {
+              closeOnMobile();
+              router.push("/profile");
+            })
+          }
+          className="flex min-w-0 items-center gap-2 rounded-[var(--radius-md)] py-1 pr-2 text-sm text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+        >
           <Avatar name={me?.name ?? "?"} size={26} />
           <span className="truncate">{me?.name ?? "Guest"}</span>
-        </div>
+        </button>
         <ThemeToggle />
       </div>
 

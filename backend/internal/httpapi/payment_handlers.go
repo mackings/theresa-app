@@ -11,6 +11,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"theresa/backend/internal/auth"
 	"theresa/backend/internal/billing"
@@ -20,6 +21,12 @@ import (
 )
 
 const minPurchaseNaira = 1000
+
+// maxTransactionsListed caps the transactions history response - there's no
+// pagination UI yet (matching every other list endpoint in this app, e.g.
+// SessionHandler.List), and 200 rows is already far more than the profile
+// page's history view needs to be useful.
+const maxTransactionsListed = 200
 
 type PaymentHandler struct {
 	db  *mongo.Database
@@ -220,6 +227,39 @@ func (h *PaymentHandler) Balance(w http.ResponseWriter, r *http.Request) {
 		"free_trial_seconds_remaining": user.FreeTrialSecondsRemaining,
 		"percent_remaining":            percentRemaining(user.CreditBalanceKobo, user.CreditCycleStartKobo),
 	})
+}
+
+// Transactions returns the authenticated user's credit transaction history
+// (purchases, voice usage deductions, free trial grants), most recent first
+// - the profile page's transactions list.
+func (h *PaymentHandler) Transactions(w http.ResponseWriter, r *http.Request) {
+	userIDHex, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	userID, err := bson.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: -1}}).
+		SetLimit(maxTransactionsListed)
+	cursor, err := h.db.Collection("credit_transactions").Find(r.Context(), bson.M{"user_id": userID}, opts)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load transactions")
+		return
+	}
+
+	transactions := []models.CreditTransaction{}
+	if err := cursor.All(r.Context(), &transactions); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load transactions")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, transactions)
 }
 
 // percentRemaining is how much of the current top-up cycle is left, for

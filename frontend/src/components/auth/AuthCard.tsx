@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -81,12 +81,10 @@ export function AuthCard({
   );
 }
 
-export function FormField({
-  label,
-  placeholder,
-  type,
-  ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+export const FormField = forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement> & { label: string }
+>(function FormField({ label, placeholder, type, ...props }, ref) {
   const [visible, setVisible] = useState(false);
   const isPassword = type === "password";
 
@@ -95,6 +93,7 @@ export function FormField({
       <span className="sr-only">{label}</span>
       <div className="relative">
         <input
+          ref={ref}
           placeholder={placeholder ?? label}
           {...props}
           type={isPassword ? (visible ? "text" : "password") : type}
@@ -113,7 +112,7 @@ export function FormField({
       </div>
     </label>
   );
-}
+});
 
 export function FormError({ message }: { message: string }) {
   return (
