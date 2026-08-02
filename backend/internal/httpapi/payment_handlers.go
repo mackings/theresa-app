@@ -25,13 +25,22 @@ type PaymentHandler struct {
 	db  *mongo.Database
 	cfg config.Config
 	flw *payments.Client
+
+	// Unlike login/reset (IP + account), this is IP-only: Initiate is
+	// already behind auth.RequireAuth, so an account key would just be the
+	// same authenticated user hitting their own limit - no distinct
+	// cross-account abuse pattern to separately defend against here. The
+	// real cost being guarded against is each call making a real
+	// server-to-server request to Flutterwave's API.
+	initiateIPLimiter *auth.RateLimiter
 }
 
 func NewPaymentHandler(db *mongo.Database, cfg config.Config) *PaymentHandler {
 	return &PaymentHandler{
-		db:  db,
-		cfg: cfg,
-		flw: payments.NewClient(cfg.FlutterwaveSecretKey),
+		db:                db,
+		cfg:               cfg,
+		flw:               payments.NewClient(cfg.FlutterwaveSecretKey),
+		initiateIPLimiter: auth.NewRateLimiter(10, 15*time.Minute),
 	}
 }
 
@@ -67,6 +76,10 @@ type initiatePaymentRequest struct {
 func (h *PaymentHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.FlutterwaveSecretKey == "" {
 		writeError(w, http.StatusServiceUnavailable, "payments are not configured")
+		return
+	}
+	if !h.initiateIPLimiter.Allow(clientIP(r)) {
+		writeError(w, http.StatusTooManyRequests, "too many requests, try again later")
 		return
 	}
 
