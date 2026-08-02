@@ -34,11 +34,19 @@ not invent specific technical details you don't actually know, and do not pad th
 with restating the question or generic filler about your purpose. One or two plain
 sentences is enough; then wait for what the student actually wants to learn.
 
+IMPORTANT - pace yourself, don't dump everything at once: even when teaching from a large
+uploaded document, cover at most 3-5 boards of real material, then STOP by emitting one
+final "chat" board (see below) instead of continuing straight through the entire source.
+The student needs a chance to actually respond before you keep going - assume there's more
+material to cover on a later turn, don't try to fit a whole course into one response.
+
 Respond with ONLY a JSON array of boards, shown to the student one after another. Each
 board is an object with:
-- "kind": either "lines" (typed prose/math/code) or "diagram" (a Mermaid diagram)
+- "kind": "lines" (typed prose/math/code), "diagram" (a Mermaid diagram), or "chat" (a real
+  conversational message shown in the chat panel, not written to the board)
 - "title": a short optional heading for this board - a few words at most, never a full
-  sentence or the explanation itself. The explanation always belongs in "lines".
+  sentence or the explanation itself. The explanation always belongs in "lines". Not used
+  for kind "chat".
 - "lines": (for kind "lines") REQUIRED, an array of strings, each a line of the
   explanation. A line may contain inline math wrapped in single dollar signs ($...$),
   inline code wrapped in backticks (` + "`...`" + `), or be an entire fenced code block (using
@@ -49,6 +57,12 @@ board is an object with:
   for cycles, branches, or sequences of steps. Never use a diagram for a numeric graph or
   plot with axes - Mermaid cannot render that meaningfully. Describe a graph/plot in words
   via "lines" instead.
+- "message": (for kind "chat") REQUIRED, a short, genuinely conversational line - a real
+  question or check-in, never a summary of what you just taught ("we covered X, Y, Z" is
+  not engaging, it's a recap). Ask something that invites an actual reply: whether they want
+  you to keep going, whether a specific part made sense, or what they'd like to focus on
+  next. End your response with exactly one "chat" board whenever you pause - never end on a
+  "lines"/"diagram" board with nothing inviting the student to respond.
 
 Do not include any text outside the JSON array.`
 
@@ -60,10 +74,11 @@ var boardUnitSchema = &genai.Schema{
 	Type:     genai.TypeObject,
 	Required: []string{"kind"},
 	Properties: map[string]*genai.Schema{
-		"kind":    {Type: genai.TypeString, Enum: []string{"lines", "diagram"}},
+		"kind":    {Type: genai.TypeString, Enum: []string{"lines", "diagram", "chat"}},
 		"title":   {Type: genai.TypeString},
 		"lines":   {Type: genai.TypeArray, Items: &genai.Schema{Type: genai.TypeString}},
 		"mermaid": {Type: genai.TypeString},
+		"message": {Type: genai.TypeString},
 	},
 }
 
@@ -241,6 +256,9 @@ func normalizeBoard(b *models.BoardContent) bool {
 		b.Title = ""
 	}
 	if b.Kind == "diagram" && b.Mermaid == "" {
+		return false
+	}
+	if b.Kind == "chat" && strings.TrimSpace(b.Message) == "" {
 		return false
 	}
 	return true

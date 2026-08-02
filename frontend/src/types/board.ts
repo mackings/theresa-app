@@ -9,7 +9,7 @@ export interface BoardContentBlock {
 
 export interface SessionEvent {
   seq: number;
-  type: "user_text" | "board_update" | "transcript";
+  type: "user_text" | "board_update" | "chat_message" | "transcript";
   role?: "user" | "assistant";
   text?: string;
   board?: BoardContentBlock;
