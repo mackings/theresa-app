@@ -302,7 +302,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !user.EmailVerified {
-		writeError(w, http.StatusForbidden, "please verify your email before logging in")
+		h.resendVerificationEmail(user)
+		writeError(w, http.StatusForbidden,
+			"please verify your email before logging in - we've sent a new verification link, "+
+				"check your inbox (and your spam/junk folder if you don't see it soon)")
 		return
 	}
 
@@ -347,7 +350,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   h.cfg.Environment == "production",
-		SameSite: sameSiteFor(h.cfg.Environment),
+		SameSite: auth.SameSiteFor(h.cfg.Environment),
 		MaxAge:   -1,
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
@@ -380,31 +383,45 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, token string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     h.cfg.JWTCookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   h.cfg.Environment == "production",
-		SameSite: sameSiteFor(h.cfg.Environment),
-		MaxAge:   int(h.cfg.JWTTTL.Seconds()),
-	})
+	auth.SetSessionCookie(w, h.cfg.JWTCookieName, token, h.cfg.Environment, h.cfg.JWTTTL)
 }
 
-// sameSiteFor picks the cookie's SameSite mode based on environment. In
-// production the frontend and backend are two separate Render services on
-// different *.onrender.com hostnames - onrender.com is itself registered on
-// the public suffix list specifically so different customers' subdomains
-// aren't treated as "same site," which means SameSite=Lax would silently
-// never send this cookie cross-service. SameSite=None (paired with the
-// Secure flag, already tied to the same production check) is required for
-// a cross-site cookie to be sent at all. Locally both run on "localhost"
-// (different ports only), which is already same-site, so Lax is fine there.
-func sameSiteFor(environment string) http.SameSite {
-	if environment == "production" {
-		return http.SameSiteNoneMode
+// resendVerificationEmail issues a fresh verification token and emails it,
+// exactly like Signup does - called when an unverified user tries to log in,
+// since their original link may be long expired, lost, or never arrived, and
+// there was previously no way for them to get a new one short of signing up
+// again. Best-effort: a failure here still leaves the login attempt correctly
+// rejected (unverified accounts can't log in either way), just without a
+// fresh email actually landing - logged, not surfaced to the response, same
+// as Signup's own background send.
+func (h *AuthHandler) resendVerificationEmail(user models.User) {
+	rawToken, tokenHash, err := auth.GenerateVerificationToken()
+	if err != nil {
+		log.Printf("login: failed to generate verification token for %s: %v", user.Email, err)
+		return
 	}
-	return http.SameSiteLaxMode
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = h.users().UpdateOne(ctx, bson.M{"_id": user.ID}, bson.M{
+		"$set": bson.M{
+			"verification_token_hash":       tokenHash,
+			"verification_token_expires_at": time.Now().Add(auth.VerificationTokenTTL),
+		},
+	})
+	if err != nil {
+		log.Printf("login: failed to store resent verification token for %s: %v", user.Email, err)
+		return
+	}
+
+	verifyURL := h.cfg.FrontendURL + "/verify-email?token=" + rawToken
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := h.email.SendVerificationEmail(ctx, user.Email, user.Name, verifyURL); err != nil {
+			log.Printf("login: failed to resend verification email to %s: %v", user.Email, err)
+		}
+	}()
 }
 
 // clientIP extracts the real originating client address. Render sits behind

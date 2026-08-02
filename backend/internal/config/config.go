@@ -57,7 +57,12 @@ func Load() Config {
 
 		JWTSecret:     os.Getenv("JWT_SECRET"),
 		JWTCookieName: getEnv("JWT_COOKIE_NAME", "theresa_session"),
-		JWTTTL:        7 * 24 * time.Hour,
+		// 60 days, refreshed on activity (see auth.SessionCookieConfig /
+		// RequireAuth's sliding-expiration check) - an active user's session
+		// effectively never expires, since every authenticated request past
+		// the halfway point reissues a fresh 60-day cookie. Only a user who
+		// never returns for a full 60 days ever needs to log in again.
+		JWTTTL: 60 * 24 * time.Hour,
 
 		ResendAPIKey:    os.Getenv("RESEND_API_KEY"),
 		ResendFromEmail: os.Getenv("RESEND_FROM_EMAIL"),
