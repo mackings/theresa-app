@@ -264,7 +264,10 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	boardReq := gemini.BoardRequest{Text: req.Text}
+	// session.Events here is the history *before* this message - the new
+	// user_text/board/chat events this call produces get appended below,
+	// they don't need to feed back into this same call's own context.
+	boardReq := gemini.BoardRequest{Text: req.Text, History: gemini.HistoryFromEvents(session.Events)}
 
 	var attachedDoc models.Document
 	isNewDocument := false
