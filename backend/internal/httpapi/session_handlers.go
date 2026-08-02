@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -265,6 +266,9 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 
 	boardReq := gemini.BoardRequest{Text: req.Text}
 
+	var attachedDoc models.Document
+	isNewDocument := false
+
 	if req.DocumentID != "" {
 		id, err := bson.ObjectIDFromHex(req.DocumentID)
 		if err != nil {
@@ -272,18 +276,25 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var doc models.Document
-		if err := h.documents().FindOne(r.Context(), bson.M{"_id": id, "owner_id": session.OwnerID}).Decode(&doc); err != nil {
+		if err := h.documents().FindOne(r.Context(), bson.M{"_id": id, "owner_id": session.OwnerID}).Decode(&attachedDoc); err != nil {
 			writeError(w, http.StatusNotFound, "document not found")
 			return
 		}
-		if doc.Status != "understood" {
+		if attachedDoc.Status != "understood" {
 			writeError(w, http.StatusConflict, "document is still processing, try again shortly")
 			return
 		}
 
-		boardReq.FileURI = doc.GeminiFileURI
-		boardReq.FileMimeType = doc.MimeType
+		boardReq.FileURI = attachedDoc.GeminiFileURI
+		boardReq.FileMimeType = attachedDoc.MimeType
+
+		isNewDocument = true
+		for _, existing := range session.DocumentIDs {
+			if existing == id {
+				isNewDocument = false
+				break
+			}
+		}
 
 		h.sessions().UpdateOne(r.Context(), bson.M{"_id": session.ID}, bson.M{
 			"$addToSet": bson.M{"document_ids": id},
@@ -315,6 +326,28 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 
 	if req.Text != "" {
 		event := models.SessionEvent{Seq: seq, Type: "user_text", Role: "user", Text: req.Text, Timestamp: time.Now()}
+		seq++
+		persistEvent(h.db, session.ID, event)
+		if writeLine(event) != nil {
+			return
+		}
+	}
+
+	// The real teaching content can take a while to start streaming,
+	// especially for a large document - GenerateBoardStream can't emit
+	// anything until Gemini has processed the whole file. The document's
+	// summary is already computed and stored from the upload step though
+	// (no extra Gemini call needed), so show it immediately as a real chat
+	// message instead of leaving the student staring at "Theresa is working
+	// on it" the whole time. Only on the first turn that attaches this
+	// document to this session - not on every later message that happens to
+	// reference it again.
+	if isNewDocument && attachedDoc.ExtractedSummary != "" {
+		event := models.SessionEvent{
+			Seq: seq, Type: "chat_message", Role: "assistant",
+			Text: fmt.Sprintf("Got it - I can see %s. %s", attachedDoc.Filename, attachedDoc.ExtractedSummary),
+			Timestamp: time.Now(),
+		}
 		seq++
 		persistEvent(h.db, session.ID, event)
 		if writeLine(event) != nil {
