@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { AlertCircle, FileCheck2, Loader2, Paperclip, RotateCcw, Send } from "lucide-react";
+import { AlertCircle, FileCheck2, FolderOpen, Loader2, Paperclip, RotateCcw, Send } from "lucide-react";
 import { streamSessionMessage, ApiError } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
+import { DocumentLibrary } from "@/components/chat/DocumentLibrary";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { useDocumentUpload } from "@/lib/useDocumentUpload";
@@ -67,8 +68,15 @@ export function ChatPanel({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { doc, error: uploadError, onFileSelected, reset: resetUpload } = useDocumentUpload(onDocumentReady);
+  const {
+    doc,
+    error: uploadError,
+    onFileSelected,
+    selectExisting,
+    reset: resetUpload,
+  } = useDocumentUpload(onDocumentReady);
 
   const turns = groupIntoTurns(events);
 
@@ -167,6 +175,17 @@ export function ChatPanel({
           </div>
         )}
 
+        {showLibrary && (
+          <div className="mb-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-1.5">
+            <DocumentLibrary
+              onSelect={(selected) => {
+                selectExisting(selected);
+                setShowLibrary(false);
+              }}
+            />
+          </div>
+        )}
+
         <div className="flex items-center gap-2 rounded-[var(--radius-full)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] py-1 pl-2 pr-1.5 shadow-[var(--shadow-xs)]">
           <input
             ref={fileInputRef}
@@ -187,6 +206,15 @@ export function ChatPanel({
             className="h-8 w-8 shrink-0 rounded-[var(--radius-full)]"
           >
             <Paperclip className="h-4 w-4" />
+          </IconButton>
+          <IconButton
+            type="button"
+            variant="ghost"
+            aria-label={showLibrary ? "Hide your materials" : "Reuse something you've already uploaded"}
+            onClick={() => setShowLibrary((v) => !v)}
+            className="h-8 w-8 shrink-0 rounded-[var(--radius-full)]"
+          >
+            <FolderOpen className="h-4 w-4" />
           </IconButton>
           <input
             type="text"

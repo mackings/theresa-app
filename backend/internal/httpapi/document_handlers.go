@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"theresa/backend/internal/auth"
 	"theresa/backend/internal/config"
@@ -192,7 +193,8 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cursor, err := h.documents().Find(r.Context(), bson.M{"owner_id": ownerID})
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	cursor, err := h.documents().Find(r.Context(), bson.M{"owner_id": ownerID}, opts)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list documents")
 		return

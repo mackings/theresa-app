@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { AlertCircle, FileCheck2, Loader2, RotateCcw, Upload } from "lucide-react";
+import { AlertCircle, FileCheck2, FolderOpen, Loader2, RotateCcw, Upload } from "lucide-react";
 import { IconButton } from "@/components/ui/Button";
 import { useDocumentUpload } from "@/lib/useDocumentUpload";
+import { DocumentLibrary } from "@/components/chat/DocumentLibrary";
 import { DocumentMeta } from "@/types/board";
 
 export function UploadDropzone({
@@ -13,7 +14,8 @@ export function UploadDropzone({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const { doc, error, onFileSelected, reset } = useDocumentUpload(onDocumentReady);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const { doc, error, onFileSelected, selectExisting, reset } = useDocumentUpload(onDocumentReady);
 
   return (
     <div className="border-t border-[var(--color-border)] p-3">
@@ -55,6 +57,22 @@ export function UploadDropzone({
             PDF, JPG, or PNG - up to 20MB
           </span>
         </button>
+      )}
+
+      {!doc && !error && (
+        <button
+          type="button"
+          onClick={() => setShowLibrary((v) => !v)}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] px-2 py-1.5 text-xs text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]"
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          {showLibrary ? "Hide" : "Or reuse something you've already uploaded"}
+        </button>
+      )}
+      {!doc && !error && showLibrary && (
+        <div className="mt-1">
+          <DocumentLibrary onSelect={selectExisting} />
+        </div>
       )}
 
       {doc && doc.status === "processing" && (
