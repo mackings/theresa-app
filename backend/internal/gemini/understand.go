@@ -10,7 +10,15 @@ import (
 )
 
 const (
-	fileReadyPollAttempts = 5
+	// 5 attempts (5s total) was too tight - most files become active in a
+	// second or two, but a larger legitimate PDF or a moment of Gemini-side
+	// queuing could plausibly take longer than that, permanently failing an
+	// otherwise-valid document. The loop still returns as soon as the file
+	// is actually active, so this only changes behavior for the slow tail,
+	// not the common case. Still comfortably inside processDocument's
+	// overall 2-minute budget, even combined with the retry-once wrapper
+	// around the whole UnderstandDocument call in document_handlers.go.
+	fileReadyPollAttempts = 20
 	fileReadyPollInterval = time.Second
 )
 

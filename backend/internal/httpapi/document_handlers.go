@@ -3,6 +3,8 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -69,7 +71,22 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, h.cfg.MaxUploadSizeBytes)
 	if err := r.ParseMultipartForm(h.cfg.MaxUploadSizeBytes); err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "file too large or invalid upload")
+		// http.MaxBytesReader reports a *http.MaxBytesError specifically when
+		// the body was too big - distinguished from any other malformed-
+		// multipart-data error so a student who hits the real size limit is
+		// told exactly that (with the actual limit, so they know what to do
+		// about it) instead of a generic, ambiguous "invalid upload" that
+		// reads the same whether their file was too big or just corrupted.
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			limitMB := h.cfg.MaxUploadSizeBytes / (1024 * 1024)
+			writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf(
+				"That file is larger than the %dMB upload limit. Please use a smaller file, or split it into parts, and try again.",
+				limitMB,
+			))
+			return
+		}
+		writeError(w, http.StatusBadRequest, "We couldn't read that upload - please try again.")
 		return
 	}
 
@@ -130,10 +147,23 @@ func (h *DocumentHandler) processDocument(docID bson.ObjectID, buf []byte, mimeT
 	now := time.Now()
 	fileURI, summary, err := h.gemini.UnderstandDocument(ctx, bytes.NewReader(buf), mimeType, filename)
 	if err != nil {
+		// A transient hiccup (a dropped connection mid-upload to Gemini's
+		// Files API, a slow readiness poll, an occasional API blip) is far
+		// more common than a genuinely bad file, and was going uncaught here
+		// even though every other Gemini call in this app already retries
+		// once for exactly this reason (see GenerateBoardStream's retry in
+		// session_handlers.go) - this was the one call site that didn't,
+		// which is the likely cause of small, valid documents occasionally
+		// failing outright. bytes.NewReader is recreated since the first
+		// attempt already consumed the original reader.
+		log.Printf("document %s processing failed, retrying once: %v", docID.Hex(), err)
+		fileURI, summary, err = h.gemini.UnderstandDocument(ctx, bytes.NewReader(buf), mimeType, filename)
+	}
+	if err != nil {
 		// The real error (which can include raw Gemini SDK/API internals)
 		// is logged server-side only - the document's own owner sees a
 		// generic, actionable message instead, not implementation detail.
-		log.Printf("document %s processing failed: %v", docID.Hex(), err)
+		log.Printf("document %s processing failed after retry: %v", docID.Hex(), err)
 		h.documents().UpdateOne(ctx, bson.M{"_id": docID}, bson.M{"$set": bson.M{
 			"status":        "failed",
 			"error_message": "We couldn't process this document. Please try again or use a different file.",

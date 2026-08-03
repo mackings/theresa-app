@@ -51,6 +51,9 @@ export function UploadDropzone({
         >
           <Upload className="h-4 w-4" />
           Upload a PDF or photo of a page
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            PDF, JPG, or PNG - up to 20MB
+          </span>
         </button>
       )}
 
