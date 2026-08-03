@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -74,9 +74,7 @@ export default function PaymentCallbackPage() {
       <div className="mx-auto flex max-w-md flex-col items-center px-6 py-16">
         <Card className="w-full p-8 text-center">
           <div className="flex justify-center">
-            <Pill icon={<Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
-              Voice credits
-            </Pill>
+            <Pill>Voice credits</Pill>
           </div>
 
           <div

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Check, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/Card";
@@ -74,9 +74,7 @@ export default function CreditsPage() {
 
         <Card className="p-7 text-center">
           <div className="flex justify-center">
-            <Pill icon={<Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
-              Voice credits
-            </Pill>
+            <Pill>Voice credits</Pill>
           </div>
           <p className="mt-4 text-4xl font-bold text-[var(--color-text-primary)]">
             {balanceKobo !== null ? formatNaira(balanceKobo) : "…"}

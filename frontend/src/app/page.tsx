@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Check, FileUp, Mic, Sparkles } from "lucide-react";
+import { ArrowRight, Check, FileUp, Mic } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Pill } from "@/components/ui/Pill";
 import { PhoneMockup } from "@/components/ui/PhoneMockup";
@@ -158,9 +158,7 @@ export default function Home() {
 
           <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 px-6 py-14 lg:grid-cols-2 lg:py-24">
             <div>
-              <Pill icon={<Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
-                AI-powered tutoring
-              </Pill>
+              <Pill>AI-powered tutoring</Pill>
 
               <h1 className="mt-5 text-4xl font-bold leading-[1.1] tracking-tight text-[var(--color-text-primary)] sm:text-5xl lg:text-6xl">
                 Learn anything,
@@ -253,9 +251,6 @@ export default function Home() {
 
               <div className="absolute -bottom-4 -left-4 hidden w-52 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-3 shadow-[var(--shadow-lg)] lg:block">
                 <div className="flex items-center gap-1.5">
-                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)]/15">
-                    <Sparkles className="h-2.5 w-2.5 text-[var(--color-accent)]" />
-                  </div>
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">Theresa</p>
                 </div>
                 <p className="mt-1.5 text-xs text-[var(--color-text-secondary)]">
@@ -279,9 +274,7 @@ export default function Home() {
 
         <section className="mx-auto w-full max-w-3xl px-6 py-16 sm:py-20">
           <div className="text-center">
-            <Pill icon={<Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
-              Real conversations
-            </Pill>
+            <Pill>Real conversations</Pill>
             <h2 className="mt-4 text-3xl font-bold tracking-tight text-[var(--color-text-primary)] sm:text-4xl">
               You talk. Theresa talks back.
             </h2>

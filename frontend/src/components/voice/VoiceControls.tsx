@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Mic, MessageCircle, MicOff, PhoneOff, Send, Sparkles, WifiOff } from "lucide-react";
+import { AlertCircle, Mic, MessageCircle, MicOff, PhoneOff, Send, WifiOff } from "lucide-react";
 import { connectLiveSession, LiveSessionConnection } from "@/lib/ws-client";
 import { startMicCapture, MicCapture, PlaybackQueue } from "@/lib/audio";
 import { BoardAudioSync } from "@/lib/board/audioSync";
@@ -157,9 +157,7 @@ export function VoiceControls({
         <div className="hidden sm:block">
           <SpeakingOrb state={orbState} />
         </div>
-        <Pill icon={<Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />}>
-          Theresa
-        </Pill>
+        <Pill>Theresa</Pill>
         <p className="max-w-xs text-center text-base font-semibold text-[var(--color-text-primary)] sm:text-xl">
           {outOfCredits ? "Out of voice credits" : status}
         </p>
