@@ -9,7 +9,6 @@ import {
   MessageSquarePlus,
   Mic,
   Send,
-  Sparkles,
   X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -269,7 +268,6 @@ export default function DashboardPage() {
 
           {sessions !== null && sessions.length === 0 && (
             <Card className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-              <Sparkles className="h-6 w-6 text-[var(--color-text-secondary)]" />
               <p className="text-sm text-[var(--color-text-secondary)]">
                 No sessions yet — start one above to see it here.
               </p>

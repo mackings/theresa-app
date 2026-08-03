@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { MessageSquarePlus, Mic, MessageSquare, PanelLeftClose, Plus, Sparkles } from "lucide-react";
+import { MessageSquarePlus, Mic, MessageSquare, PanelLeftClose, Plus } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
@@ -191,7 +191,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           className="flex items-center justify-between border-t border-[var(--color-border)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
         >
           <span className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
-            <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />
             {freeTrialSecondsLeft && freeTrialSecondsLeft > 0
               ? `${Math.ceil(freeTrialSecondsLeft / 60)} min free trial left`
               : `${percentRemaining}% usage remaining`}
