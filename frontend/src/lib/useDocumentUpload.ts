@@ -98,10 +98,21 @@ export function useDocumentUpload(onDocumentReady: (doc: DocumentMeta) => void) 
     await pollUntilDone(uploaded.id);
   }
 
+  // Reuses a document that's already been uploaded and understood, skipping
+  // the upload+processing round trip entirely - same terminal state
+  // (`doc` set, `onDocumentReady` fired) a fresh upload reaches, so every
+  // caller's existing "processing"/"understood" rendering just works
+  // unchanged regardless of which path got there.
+  function selectExisting(existing: DocumentMeta) {
+    setError(null);
+    setDoc(existing);
+    onDocumentReady(existing);
+  }
+
   function reset() {
     setDoc(null);
     setError(null);
   }
 
-  return { doc, error, onFileSelected, reset };
+  return { doc, error, onFileSelected, selectExisting, reset };
 }
