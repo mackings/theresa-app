@@ -20,6 +20,13 @@ const MAX_POLL_DURATION_MS = 150_000;
 export function useDocumentUpload(onDocumentReady: (doc: DocumentMeta) => void) {
   const [doc, setDoc] = useState<DocumentMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set the instant a file is picked, cleared once the initial POST
+  // resolves (success or failure). The backend reads the whole file and
+  // writes it to GridFS before responding at all, so for a real multi-MB
+  // file this request alone can take a real while - without this, nothing
+  // in the UI changes between "file picked" and "upload done", which reads
+  // as the app having silently done nothing for however long that takes.
+  const [uploadingFilename, setUploadingFilename] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -74,6 +81,7 @@ export function useDocumentUpload(onDocumentReady: (doc: DocumentMeta) => void) 
   async function onFileSelected(file: File) {
     setError(null);
     setDoc(null);
+    setUploadingFilename(file.name);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -91,9 +99,11 @@ export function useDocumentUpload(onDocumentReady: (doc: DocumentMeta) => void) 
       setError(
         err instanceof ApiError ? err.message : "Upload failed - check your connection and try again."
       );
+      setUploadingFilename(null);
       return;
     }
 
+    setUploadingFilename(null);
     setDoc(uploaded);
     await pollUntilDone(uploaded.id);
   }
@@ -105,6 +115,7 @@ export function useDocumentUpload(onDocumentReady: (doc: DocumentMeta) => void) 
   // unchanged regardless of which path got there.
   function selectExisting(existing: DocumentMeta) {
     setError(null);
+    setUploadingFilename(null);
     setDoc(existing);
     onDocumentReady(existing);
   }
@@ -112,7 +123,8 @@ export function useDocumentUpload(onDocumentReady: (doc: DocumentMeta) => void) 
   function reset() {
     setDoc(null);
     setError(null);
+    setUploadingFilename(null);
   }
 
-  return { doc, error, onFileSelected, selectExisting, reset };
+  return { doc, error, uploadingFilename, onFileSelected, selectExisting, reset };
 }

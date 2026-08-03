@@ -15,7 +15,8 @@ export function UploadDropzone({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
-  const { doc, error, onFileSelected, selectExisting, reset } = useDocumentUpload(onDocumentReady);
+  const { doc, error, uploadingFilename, onFileSelected, selectExisting, reset } =
+    useDocumentUpload(onDocumentReady);
 
   return (
     <div className="border-t border-[var(--color-border)] p-3">
@@ -30,7 +31,7 @@ export function UploadDropzone({
         }}
       />
 
-      {!doc && !error && (
+      {!doc && !error && !uploadingFilename && (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -59,7 +60,7 @@ export function UploadDropzone({
         </button>
       )}
 
-      {!doc && !error && (
+      {!doc && !error && !uploadingFilename && (
         <button
           type="button"
           onClick={() => setShowLibrary((v) => !v)}
@@ -69,10 +70,17 @@ export function UploadDropzone({
           {showLibrary ? "Hide" : "Or reuse something you've already uploaded"}
         </button>
       )}
-      {!doc && !error && showLibrary && (
+      {!doc && !error && !uploadingFilename && showLibrary && (
         <div className="mt-1">
           <DocumentLibrary onSelect={selectExisting} />
         </div>
+      )}
+
+      {uploadingFilename && (
+        <p className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Uploading {uploadingFilename}...
+        </p>
       )}
 
       {doc && doc.status === "processing" && (

@@ -73,6 +73,7 @@ export function ChatPanel({
   const {
     doc,
     error: uploadError,
+    uploadingFilename,
     onFileSelected,
     selectExisting,
     reset: resetUpload,
@@ -143,6 +144,12 @@ export function ChatPanel({
           </p>
         )}
 
+        {uploadingFilename && (
+          <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Uploading {uploadingFilename}...
+          </p>
+        )}
         {doc && doc.status === "processing" && (
           <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -203,6 +210,7 @@ export function ChatPanel({
             variant="ghost"
             aria-label="Upload a PDF or photo of a page"
             onClick={() => fileInputRef.current?.click()}
+            disabled={!!uploadingFilename}
             className="h-8 w-8 shrink-0 rounded-[var(--radius-full)]"
           >
             <Paperclip className="h-4 w-4" />
