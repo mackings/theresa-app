@@ -41,7 +41,7 @@ type SessionEvent struct {
 // conversational check-in between batches of teaching. Message only applies
 // to that kind.
 type BoardContent struct {
-	Kind    string   `bson:"kind" json:"kind"` // "lines" | "diagram" | "chat"
+	Kind    string   `bson:"kind" json:"kind"` // "lines" | "diagram" | "chat" | "clear"
 	Title   string   `bson:"title,omitempty" json:"title,omitempty"`
 	Lines   []string `bson:"lines,omitempty" json:"lines,omitempty"`
 	Mermaid string   `bson:"mermaid,omitempty" json:"mermaid,omitempty"`

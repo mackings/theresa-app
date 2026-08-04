@@ -6,10 +6,29 @@ import { DiagramBoard } from "@/components/board/DiagramBoard";
 import type { BoardAudioSync } from "@/lib/board/audioSync";
 
 function isRenderableBoardEvent(e: SessionEvent): boolean {
-  return e.type === "board_update" && !!e.board && (e.board.kind === "lines" || e.board.kind === "diagram");
+  return (
+    e.type === "board_update" &&
+    !!e.board &&
+    (e.board.kind === "lines" || e.board.kind === "diagram" || e.board.kind === "clear")
+  );
 }
 
 function noop() {}
+
+// A "clear" event (Theresa erasing the board on request) has no content of
+// its own to reveal - it's purely a reset signal. Only what comes after the
+// LAST clear in a batch is ever worth showing (anything before it is
+// guaranteed superseded), so this strips a clear and everything ahead of it
+// down to nothing, reporting that clear's seq back so the caller can wipe
+// whatever was already accumulated and fast-forward the cursor past it.
+function dropUpToLastClear(events: SessionEvent[]): { events: SessionEvent[]; lastClearSeq: number | null } {
+  let lastClearIdx = -1;
+  for (let i = 0; i < events.length; i++) {
+    if (events[i].board?.kind === "clear") lastClearIdx = i;
+  }
+  if (lastClearIdx === -1) return { events, lastClearSeq: null };
+  return { events: events.slice(lastClearIdx + 1), lastClearSeq: events[lastClearIdx].seq };
+}
 
 // Board accumulates every unit as it arrives instead of wiping between them:
 // each new board is typed out and stays on screen, growing downward (with
@@ -63,7 +82,14 @@ export function Board({
       return;
     }
 
-    const pendingEvents = boardEvents.filter((e) => e.seq > cursorSeqRef.current);
+    const pendingRaw = boardEvents.filter((e) => e.seq > cursorSeqRef.current);
+    if (pendingRaw.length === 0) return;
+
+    const { events: pendingEvents, lastClearSeq } = dropUpToLastClear(pendingRaw);
+    if (lastClearSeq !== null) {
+      setVisibleEvents([]);
+      cursorSeqRef.current = lastClearSeq;
+    }
     if (pendingEvents.length === 0) return;
 
     // Everything already taught before this visit lands in one batch -
@@ -95,7 +121,14 @@ export function Board({
     activeSeqRef.current = null;
     setActiveSeq(null);
 
-    const pending = boardEvents.filter((e) => e.seq > cursorSeqRef.current);
+    const pendingRaw = boardEvents.filter((e) => e.seq > cursorSeqRef.current);
+    if (pendingRaw.length === 0) return;
+
+    const { events: pending, lastClearSeq } = dropUpToLastClear(pendingRaw);
+    if (lastClearSeq !== null) {
+      setVisibleEvents([]);
+      cursorSeqRef.current = lastClearSeq;
+    }
     if (pending.length === 0) return;
 
     const next = pending[0];
