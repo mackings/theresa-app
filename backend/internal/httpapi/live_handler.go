@@ -127,6 +127,7 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	billing.RefreshDailyFreeTrial(r.Context(), h.db, &user)
 
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
