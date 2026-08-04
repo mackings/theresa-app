@@ -51,6 +51,25 @@ export class PlaybackQueue {
 
   constructor() {
     this.audioContext = new AudioContext({ sampleRate: PLAYBACK_SAMPLE_RATE });
+    // Browsers create a new AudioContext in a "suspended" state unless it's
+    // constructed inside a real user gesture - this one is created the
+    // instant a voice session mounts, before the user has clicked anything
+    // on this page, so it's reliably suspended on a fresh page load/refresh.
+    // Scheduling still "succeeds" on a suspended context (currentTime just
+    // freezes rather than erroring), which is what made Theresa's opening
+    // greeting look like it silently did nothing instead of erroring - the
+    // audio really was being sent and scheduled, just never audibly played.
+    // This call resolves immediately if there's still residual activation
+    // from whatever click navigated here; VoiceControls also wires a
+    // page-wide first-interaction fallback for when there isn't.
+    this.audioContext.resume().catch(() => {});
+  }
+
+  // Exposed so a real user-gesture handler elsewhere (see VoiceControls'
+  // first-interaction fallback) can unlock playback even when the context
+  // was still suspended at construction time.
+  resume() {
+    return this.audioContext.resume().catch(() => {});
   }
 
   enqueue(pcm16: ArrayBuffer) {
@@ -74,6 +93,7 @@ export class PlaybackQueue {
   stopAll() {
     this.audioContext.close();
     this.audioContext = new AudioContext({ sampleRate: PLAYBACK_SAMPLE_RATE });
+    this.audioContext.resume().catch(() => {});
     this.nextStartTime = 0;
   }
 

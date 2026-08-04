@@ -44,6 +44,22 @@ export function VoiceControls({
     const playback = new PlaybackQueue();
     playbackRef.current = playback;
 
+    // Theresa is meant to greet unprompted the instant a voice session
+    // opens - but a fresh AudioContext (see PlaybackQueue's constructor)
+    // starts suspended unless there's still residual activation from
+    // whatever click navigated here, which a direct page load/refresh
+    // never has. Real playback would then silently do nothing until the
+    // user happened to interact with something, reading exactly like
+    // Theresa waiting for the user to speak first instead of the reverse.
+    // This unlocks it on the very first interaction anywhere on the page,
+    // gesture or not - by the time a real user notices nothing's playing
+    // and does anything at all, this fires and catches up immediately.
+    const unlockAudio = () => {
+      playback.resume();
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+
     // Audio arrives off the wire as fast as the network allows, which can
     // outrun the board's typewriter reveal - audioSync gates release of each
     // chunk to wall-clock time since the board actually started typing, so
@@ -82,6 +98,8 @@ export function VoiceControls({
 
     return () => {
       setActiveVoiceSession(false);
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
       connection.close();
       playback.close();
       audioSync.stop();
