@@ -45,6 +45,20 @@ var DrawDiagramFunctionDeclaration = &genai.FunctionDeclaration{
 	},
 }
 
+// ClearBoardFunctionDeclaration lets the model actually erase the board when
+// the student explicitly asks for it ("clean the board", "clear this",
+// "start fresh") - without it, the board has no way to become blank again on
+// request, since every other tool only ever adds a new board on top of the
+// last one. No parameters - clearing has no content of its own.
+var ClearBoardFunctionDeclaration = &genai.FunctionDeclaration{
+	Name:        "clear_board",
+	Description: "Erase the board back to blank - call this only when the student explicitly asks to clear, clean, or erase the board.",
+	Parameters: &genai.Schema{
+		Type:       genai.TypeObject,
+		Properties: map[string]*genai.Schema{},
+	},
+}
+
 // ChatCheckInFunctionDeclaration is text mode's equivalent of voice simply
 // pausing to ask a real question out loud. Text has no speech channel, so a
 // genuine conversational check-in needs its own explicit call to be told
@@ -70,6 +84,7 @@ var BoardTools = []*genai.Tool{
 	{FunctionDeclarations: []*genai.FunctionDeclaration{
 		ShowWorkingFunctionDeclaration,
 		DrawDiagramFunctionDeclaration,
+		ClearBoardFunctionDeclaration,
 	}},
 }
 
@@ -80,6 +95,7 @@ var TextTools = []*genai.Tool{
 		ShowWorkingFunctionDeclaration,
 		DrawDiagramFunctionDeclaration,
 		ChatCheckInFunctionDeclaration,
+		ClearBoardFunctionDeclaration,
 	}},
 }
 
@@ -115,6 +131,9 @@ func BuildBoardContent(name string, args map[string]any) (models.BoardContent, b
 			return models.BoardContent{}, false
 		}
 		return models.BoardContent{Kind: "chat", Message: message}, true
+
+	case "clear_board":
+		return models.BoardContent{Kind: "clear"}, true
 
 	default:
 		return models.BoardContent{}, false

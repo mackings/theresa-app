@@ -1,4 +1,4 @@
-export type BoardKind = "lines" | "diagram";
+export type BoardKind = "lines" | "diagram" | "clear";
 
 export interface BoardContentBlock {
   kind: BoardKind;

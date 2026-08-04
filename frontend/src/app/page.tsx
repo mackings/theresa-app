@@ -7,7 +7,7 @@ import { FeatureShowcaseCard } from "@/components/ui/FeatureShowcaseCard";
 
 const CHECKLIST = [
   "Teaches any topic, not just uploaded material",
-  "Real-time voice explanations, Pidgin-inflected",
+  "Real-time voice explanations, in a warm Nigerian voice",
   "A live board that writes itself as she teaches",
 ];
 
@@ -104,7 +104,7 @@ const FEATURES = [
   {
     preview: <VoicePreview />,
     title: "Hear it explained",
-    description: "A warm, patient voice that teaches out loud, Pidgin-inflected.",
+    description: "A warm, patient Nigerian voice that teaches out loud.",
   },
   {
     preview: <UploadPreview />,

@@ -28,7 +28,19 @@ export function DiagramBoard({
     async function render() {
       try {
         const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({ startOnLoad: false, theme: "neutral" });
+        // Without suppressErrorRendering, Mermaid's default behavior on a
+        // parse failure is to NOT throw - it silently resolves with its own
+        // built-in "syntax error" SVG (raw error text + the offending
+        // syntax, rendered as a diagram), which looked like a successful
+        // render to the code below and got displayed directly - exactly the
+        // "heavy syntax error fills my screen" report. This flag makes a
+        // parse failure actually reject (caught below) instead, and Mermaid
+        // itself cleans up the offscreen DOM node it renders into rather
+        // than leaving it behind - the render sandbox is appended straight
+        // to document.body, outside anything React tracks or would ever
+        // clean up on its own, which is why it stuck around until a full
+        // page refresh.
+        mermaid.initialize({ startOnLoad: false, theme: "neutral", suppressErrorRendering: true });
         const { svg } = await mermaid.render(`mermaid-${id}`, spec);
         if (cancelled) return;
         setSvg(svg);
