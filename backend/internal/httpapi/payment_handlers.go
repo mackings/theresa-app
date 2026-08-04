@@ -221,6 +221,7 @@ func (h *PaymentHandler) Balance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	billing.RefreshDailyFreeTrial(r.Context(), h.db, &user)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"balance_kobo":                 user.CreditBalanceKobo,

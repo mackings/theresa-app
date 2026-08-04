@@ -71,7 +71,7 @@ export function AuthCard({
               Taught out loud, by Theresa.
             </p>
             <p className="mt-1 text-sm text-white/70">
-              Ask a question, paste a problem, or upload your notes — Theresa
+              Ask a question, paste a problem, or upload your notes. Theresa
               teaches any topic on a live board, out loud.
             </p>
           </div>

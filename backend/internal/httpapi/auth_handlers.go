@@ -98,6 +98,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		VerificationTokenExpiresAt: time.Now().Add(auth.VerificationTokenTTL),
 		CreatedAt:                  time.Now(),
 		FreeTrialSecondsRemaining:  billing.FreeTrialSeconds,
+		FreeTrialResetAt:           time.Now(),
 	}
 
 	ctx := r.Context()
@@ -284,10 +285,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := strings.ToLower(strings.TrimSpace(req.Email))
-	if !h.loginIPLimiter.Allow(clientIP(r)) || !h.loginAccountLimiter.Allow(email) {
-		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
-		return
-	}
+	// Rate limiting disabled per explicit request - it was blocking too many
+	// legitimate attempts. Commented out, not removed, so it's easy to
+	// re-enable later (loginIPLimiter/loginAccountLimiter are still
+	// constructed in NewAuthHandler either way).
+	// if !h.loginIPLimiter.Allow(clientIP(r)) || !h.loginAccountLimiter.Allow(email) {
+	// 	writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
+	// 	return
+	// }
 
 	var user models.User
 	err := h.users().FindOne(r.Context(), bson.M{"email": email}).Decode(&user)

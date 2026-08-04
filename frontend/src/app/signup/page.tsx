@@ -56,7 +56,7 @@ export default function SignupPage() {
   return (
     <AuthCard
       title="Create your account"
-      subtitle="Ask a question, paste a problem, or upload your notes — Theresa teaches any topic on a live board, out loud."
+      subtitle="Ask a question, paste a problem, or upload your notes. Theresa teaches any topic on a live board, out loud."
       footer={
         <>
           Already have an account?{" "}
