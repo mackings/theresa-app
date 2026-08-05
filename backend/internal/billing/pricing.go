@@ -25,11 +25,11 @@ const (
 	// be at most (1 - ProfitMargin) of the price charged.
 	ProfitMargin = 0.20
 
-	// FreeTrialSeconds is 10 minutes of voice, free, before any credits are
+	// FreeTrialSeconds is 5 minutes of voice, free, before any credits are
 	// touched - granted fresh once per calendar day (see
 	// RefreshDailyFreeTrial), not a one-time lifetime allowance. Cumulative
 	// across a day's sessions, not a per-session allowance.
-	FreeTrialSeconds = 600
+	FreeTrialSeconds = 300
 
 	// charsPerTokenEstimate approximates tokens from character count, used
 	// only for the small board-update tool-call payloads where an exact
