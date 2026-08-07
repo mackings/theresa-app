@@ -24,25 +24,32 @@ type AuthHandler struct {
 
 	email *email.Client
 
-	// Both login and reset are throttled by IP *and* by account, since an
-	// IP-only limit doesn't stop a distributed attempt against one target
-	// account from many source addresses, and an account-only limit doesn't
-	// stop one address hammering many accounts.
-	loginIPLimiter      *auth.RateLimiter
-	loginAccountLimiter *auth.RateLimiter
-	resetIPLimiter      *auth.RateLimiter
-	resetAccountLimiter *auth.RateLimiter
+	// Login, reset, and resend-verification are each throttled by IP *and*
+	// by account, since an IP-only limit doesn't stop a distributed attempt
+	// against one target account from many source addresses, and an
+	// account-only limit doesn't stop one address hammering many accounts.
+	// resend-verification gets its own counters rather than sharing reset's -
+	// they're different user-facing actions, and sharing state would mean
+	// exhausting one by mistake locks out the other too.
+	loginIPLimiter       *auth.RateLimiter
+	loginAccountLimiter  *auth.RateLimiter
+	resetIPLimiter       *auth.RateLimiter
+	resetAccountLimiter  *auth.RateLimiter
+	resendIPLimiter      *auth.RateLimiter
+	resendAccountLimiter *auth.RateLimiter
 }
 
 func NewAuthHandler(db *mongo.Database, cfg config.Config, emailClient *email.Client) *AuthHandler {
 	return &AuthHandler{
-		db:                  db,
-		cfg:                 cfg,
-		email:               emailClient,
-		loginIPLimiter:      auth.NewRateLimiter(5, 15*time.Minute),
-		loginAccountLimiter: auth.NewRateLimiter(5, 15*time.Minute),
-		resetIPLimiter:      auth.NewRateLimiter(3, 15*time.Minute),
-		resetAccountLimiter: auth.NewRateLimiter(3, 15*time.Minute),
+		db:                   db,
+		cfg:                  cfg,
+		email:                emailClient,
+		loginIPLimiter:       auth.NewRateLimiter(5, 15*time.Minute),
+		loginAccountLimiter:  auth.NewRateLimiter(5, 15*time.Minute),
+		resetIPLimiter:       auth.NewRateLimiter(3, 15*time.Minute),
+		resetAccountLimiter:  auth.NewRateLimiter(3, 15*time.Minute),
+		resendIPLimiter:      auth.NewRateLimiter(3, 15*time.Minute),
+		resendAccountLimiter: auth.NewRateLimiter(3, 15*time.Minute),
 	}
 }
 
@@ -170,6 +177,42 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "email verified"})
 }
 
+type resendVerificationRequest struct {
+	Email string `json:"email"`
+}
+
+// ResendVerification is the discoverable path to a fresh verification email -
+// previously the only way to get one was to attempt a login and hit the
+// unverified-account check, a side effect nobody looking at a "verification
+// failed" page (an expired link, most commonly) would ever find on their
+// own. Same generic-response convention as ForgotPassword: the response
+// never reveals whether the email is registered or already verified, only
+// ever "if there's something to resend, we've sent it."
+func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request) {
+	var req resendVerificationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	const genericMessage = "if that email has an account that still needs verifying, we've sent a new link"
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !h.resendIPLimiter.Allow(clientIP(r)) || !h.resendAccountLimiter.Allow(email) {
+		writeError(w, http.StatusTooManyRequests, "too many requests, try again later")
+		return
+	}
+
+	var user models.User
+	if err := h.users().FindOne(r.Context(), bson.M{"email": email}).Decode(&user); err != nil || user.EmailVerified {
+		writeJSON(w, http.StatusOK, map[string]string{"message": genericMessage})
+		return
+	}
+
+	h.resendVerificationEmail(user)
+	writeJSON(w, http.StatusOK, map[string]string{"message": genericMessage})
+}
+
 type forgotPasswordRequest struct {
 	Email string `json:"email"`
 }
@@ -217,11 +260,23 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sent in the background, same as Signup's verification email and
+	// Login's resend - a slow (occasionally very slow, observed in
+	// production taking 30+ seconds) Resend API call must never block this
+	// response. This endpoint's whole point is a generic, timing-independent
+	// reply regardless of whether the account exists; making the client wait
+	// out however long Resend takes defeats that and risks a client-side
+	// timeout reading it as a failure when the send may still succeed. A
+	// fresh context is required since r.Context() dies the instant this
+	// handler returns.
 	resetURL := h.cfg.FrontendURL + "/reset-password?token=" + rawToken
-	if err := h.email.SendPasswordResetEmail(ctx, user.Email, user.Name, resetURL); err != nil {
-		writeError(w, http.StatusBadGateway, "failed to send reset email, please try again")
-		return
-	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := h.email.SendPasswordResetEmail(ctx, user.Email, user.Name, resetURL); err != nil {
+			log.Printf("forgot-password: failed to send reset email to %s: %v", user.Email, err)
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": genericMessage})
 }
@@ -401,10 +456,14 @@ func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, token string) {
 // rejected (unverified accounts can't log in either way), just without a
 // fresh email actually landing - logged, not surfaced to the response, same
 // as Signup's own background send.
+// resendVerificationEmail issues a fresh verification token and emails it -
+// called both when an unverified user tries to log in, and from the
+// dedicated ResendVerification endpoint (the discoverable path, reached from
+// the "verification failed" page after a link expires).
 func (h *AuthHandler) resendVerificationEmail(user models.User) {
 	rawToken, tokenHash, err := auth.GenerateVerificationToken()
 	if err != nil {
-		log.Printf("login: failed to generate verification token for %s: %v", user.Email, err)
+		log.Printf("resend-verification: failed to generate verification token for %s: %v", user.Email, err)
 		return
 	}
 
@@ -417,7 +476,7 @@ func (h *AuthHandler) resendVerificationEmail(user models.User) {
 		},
 	})
 	if err != nil {
-		log.Printf("login: failed to store resent verification token for %s: %v", user.Email, err)
+		log.Printf("resend-verification: failed to store resent verification token for %s: %v", user.Email, err)
 		return
 	}
 
@@ -426,7 +485,7 @@ func (h *AuthHandler) resendVerificationEmail(user models.User) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := h.email.SendVerificationEmail(ctx, user.Email, user.Name, verifyURL); err != nil {
-			log.Printf("login: failed to resend verification email to %s: %v", user.Email, err)
+			log.Printf("resend-verification: failed to resend verification email to %s: %v", user.Email, err)
 		}
 	}()
 }
