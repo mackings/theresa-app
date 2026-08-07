@@ -111,6 +111,7 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 	r.Route("/api/auth", func(r chi.Router) {
 		r.Post("/signup", authHandler.Signup)
 		r.Post("/verify-email", authHandler.VerifyEmail)
+		r.Post("/resend-verification", authHandler.ResendVerification)
 		r.Post("/forgot-password", authHandler.ForgotPassword)
 		r.Post("/reset-password", authHandler.ResetPassword)
 		r.Post("/login", authHandler.Login)
