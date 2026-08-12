@@ -48,12 +48,25 @@ const maxWSFrameBytes = 512 * 1024
 // silently starting fresh, so without this fallback a session with a stale
 // handle would refuse to open at all instead of just starting a new
 // conversation.
-func connectWithFreshFallback(ctx context.Context, client *gemini.Client, model, handle string) (*live.Session, error) {
-	session, err := live.Connect(ctx, client, model, handle)
-	if err == nil || handle == "" {
-		return session, err
+//
+// The returned bool reports whether the connection actually resumed prior
+// Gemini-side state - callers that only check "did we have a stored handle"
+// get this wrong whenever that handle turned out to be stale and this fell
+// back to fresh: the connection is real and open, but Gemini remembers
+// nothing, so any opening-prompt logic gated on the wrong signal skips
+// sending anything and Theresa is left with zero context and zero
+// instruction on what to do with a fresh connection.
+func connectWithFreshFallback(ctx context.Context, client *gemini.Client, model, handle string) (session *live.Session, resumed bool, err error) {
+	if handle == "" {
+		session, err = live.Connect(ctx, client, model, "")
+		return session, false, err
 	}
-	return live.Connect(ctx, client, model, "")
+	session, err = live.Connect(ctx, client, model, handle)
+	if err == nil {
+		return session, true, nil
+	}
+	session, err = live.Connect(ctx, client, model, "")
+	return session, false, err
 }
 
 var reconnectBackoff = []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond, 3 * time.Second}
@@ -153,7 +166,7 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	// session - first-ever, a manual page refresh, or a reconnect after the
 	// browser's own socket dropped - resumes prior Gemini conversation state
 	// if any exists, not just a reconnect within one already-open browser WS.
-	liveSession, err := connectWithFreshFallback(ctx, h.gemini, h.cfg.GeminiLiveModel, session.GeminiResumptionHandle)
+	liveSession, resumed, err := connectWithFreshFallback(ctx, h.gemini, h.cfg.GeminiLiveModel, session.GeminiResumptionHandle)
 	if err != nil {
 		conn.WriteJSON(errorMessage("failed to start voice session"))
 		log.Printf("live session connect error: %v", err)
@@ -184,13 +197,16 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 
 	conn.WriteJSON(creditBalanceMessage(user.CreditBalanceKobo, user.FreeTrialSecondsRemaining))
 
-	// Only the first time this session's content ever reaches the Live/voice
-	// side gets an opening message - a non-empty resumption handle means
-	// Gemini already has this session's conversation state, so re-sending
-	// anything here would duplicate/contradict what it already remembers
-	// (covers both a reconnect within one browser session and a page
-	// refresh, either of which already has a handle by this point).
-	if session.GeminiResumptionHandle == "" {
+	// Only send an opening message when this connection did NOT actually
+	// resume prior Gemini-side state. Gating this on `resumed` (not on
+	// whether we merely had a stored handle) matters because a stored
+	// handle can be stale - connectWithFreshFallback silently falls back to
+	// a brand-new connection when that happens, and in that case Gemini
+	// remembers nothing, so skipping the opening message here would leave
+	// it with zero context and zero instruction, improvising blindly
+	// instead of greeting-and-continuing or picking up where things left
+	// off.
+	if !resumed {
 		isBrandNew := len(session.Events) == 0
 		if doc, ok := h.firstUnderstoodDocument(r.Context(), session); ok {
 			// A document is attached - ground the opening turn in its
@@ -403,7 +419,13 @@ func (rl *liveRelay) attemptReconnect(ctx context.Context) bool {
 		case <-time.After(delay):
 		}
 
-		newSession, err := connectWithFreshFallback(ctx, rl.geminiClient, rl.model, rl.resumptionHandle)
+		// A fresh-fallback here (resumed=false) would mean a mid-conversation
+		// reconnect lost context, same failure class HandleConnection's
+		// `resumed` check now guards against - left unhandled here since
+		// this handle is only ever seconds old (just learned from the same
+		// conversation that's reconnecting), unlike a reopened session's
+		// handle which may be stale from a much longer gap.
+		newSession, _, err := connectWithFreshFallback(ctx, rl.geminiClient, rl.model, rl.resumptionHandle)
 		if err != nil {
 			log.Printf("reconnect attempt failed: %v", err)
 			continue
