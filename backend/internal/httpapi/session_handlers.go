@@ -61,6 +61,13 @@ type createSessionRequest struct {
 	Title       string   `json:"title"`
 	DocumentIDs []string `json:"document_ids"`
 	Mode        string   `json:"mode"`
+
+	// LearningPlanID/LearningPlanStepIndex are optional - set only when this
+	// session is being started from a specific learning-plan step (see
+	// learningplan_handlers.go). When both present, ownership of the plan is
+	// verified and the matching step is linked back to the new session.
+	LearningPlanID        string `json:"learning_plan_id"`
+	LearningPlanStepIndex *int   `json:"learning_plan_step_index"`
 }
 
 func (h *SessionHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -96,16 +103,67 @@ func (h *SessionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		docIDs = append(docIDs, id)
 	}
 
+	// Optional learning-plan linkage: verify the plan is owned by the same
+	// caller and the step index actually exists on it before accepting the
+	// link - a mismatched/foreign plan id here would otherwise silently
+	// attach a session to a plan the user doesn't own. Loading the full plan
+	// (not just counting) lets the matching step's own title/objectives be
+	// snapshotted onto the session, so live_handler.go can ground a voice
+	// session's opening turn in exactly this step's topic.
+	var learningPlanID *bson.ObjectID
+	var learningPlanStepIndex *int
+	var stepTitle string
+	var stepObjectives []string
+	var stepPronunciationNotes string
+	if req.LearningPlanID != "" && req.LearningPlanStepIndex != nil {
+		planID, err := bson.ObjectIDFromHex(req.LearningPlanID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid learning_plan_id")
+			return
+		}
+		var plan models.LearningPlan
+		if err := h.db.Collection("learning_plans").FindOne(r.Context(), bson.M{
+			"_id": planID, "owner_id": ownerID,
+		}).Decode(&plan); err != nil {
+			writeError(w, http.StatusNotFound, "learning plan not found")
+			return
+		}
+		var step *models.LearningPlanStep
+		for i := range plan.Steps {
+			if plan.Steps[i].Index == *req.LearningPlanStepIndex {
+				step = &plan.Steps[i]
+				break
+			}
+		}
+		if step == nil {
+			writeError(w, http.StatusNotFound, "learning plan step not found")
+			return
+		}
+		learningPlanID = &planID
+		learningPlanStepIndex = req.LearningPlanStepIndex
+		stepTitle = step.Title
+		stepObjectives = step.Objectives
+		stepPronunciationNotes = step.PronunciationNotes
+		if req.DocumentIDs == nil && plan.DocumentID != nil {
+			docIDs = append(docIDs, *plan.DocumentID)
+		}
+	}
+
 	now := time.Now()
 	session := models.TutorSession{
-		OwnerID:     ownerID,
-		Title:       title,
-		DocumentIDs: docIDs,
-		Mode:        mode,
-		Status:      "active",
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		Events:      []models.SessionEvent{},
+		OwnerID:                            ownerID,
+		Title:                              title,
+		DocumentIDs:                        docIDs,
+		Mode:                               mode,
+		Status:                             "active",
+		CreatedAt:                          now,
+		UpdatedAt:                          now,
+		Events:                             []models.SessionEvent{},
+		LearningPlanID:                     learningPlanID,
+		LearningPlanStepIndex:              learningPlanStepIndex,
+		LearningPlanStepTitle:              stepTitle,
+		LearningPlanStepObjectives:         stepObjectives,
+		LearningPlanStepPronunciationNotes: stepPronunciationNotes,
 	}
 
 	result, err := h.sessions().InsertOne(r.Context(), session)
@@ -114,6 +172,13 @@ func (h *SessionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session.ID = result.InsertedID.(bson.ObjectID)
+
+	if learningPlanID != nil {
+		h.db.Collection("learning_plans").UpdateOne(r.Context(),
+			bson.M{"_id": *learningPlanID, "steps.index": *learningPlanStepIndex},
+			bson.M{"$set": bson.M{"steps.$.session_id": session.ID}},
+		)
+	}
 
 	writeJSON(w, http.StatusCreated, session)
 }
@@ -349,7 +414,7 @@ func (h *SessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	if isNewDocument && attachedDoc.ExtractedSummary != "" {
 		event := models.SessionEvent{
 			Seq: seq, Type: "chat_message", Role: "assistant",
-			Text: fmt.Sprintf("Got it - I can see %s. %s", attachedDoc.Filename, attachedDoc.ExtractedSummary),
+			Text:      fmt.Sprintf("Got it - I can see %s. %s", attachedDoc.Filename, attachedDoc.ExtractedSummary),
 			Timestamp: time.Now(),
 		}
 		seq++

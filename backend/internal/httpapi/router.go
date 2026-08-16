@@ -119,7 +119,9 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
+			r.Use(requireCSRFHeader)
 			r.Get("/me", authHandler.Me)
+			r.Post("/account-type", authHandler.AccountType)
 		})
 	})
 
@@ -134,6 +136,7 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 	})
 
 	sessionHandler := NewSessionHandler(db, cfg, geminiClient)
+	quizHandler := NewQuizHandler(db, cfg, geminiClient)
 	r.Route("/api/sessions", func(r chi.Router) {
 		r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
 		r.Use(requireCSRFHeader)
@@ -144,6 +147,23 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		r.Delete("/{id}", sessionHandler.Delete)
 		r.Post("/{id}/messages", sessionHandler.PostMessage)
 		r.Post("/{id}/ws-ticket", sessionHandler.IssueWSTicket)
+		// Quizzes are a learning-plan-only feature (enforced inside
+		// QuizHandler itself, not just by what the frontend shows) - kept
+		// as routes on /api/sessions rather than a new top-level resource
+		// group since a quiz has no identity apart from its owning session.
+		r.Post("/{id}/quiz", quizHandler.GetOrCreate)
+		r.Get("/{id}/quiz", quizHandler.Get)
+		r.Post("/{id}/quiz/submit", quizHandler.Submit)
+	})
+
+	learningPlanHandler := NewLearningPlanHandler(db, cfg, geminiClient)
+	r.Route("/api/learning-plans", func(r chi.Router) {
+		r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
+		r.Use(requireCSRFHeader)
+		r.Post("/", learningPlanHandler.Create)
+		r.Get("/", learningPlanHandler.List)
+		r.Get("/{id}", learningPlanHandler.Get)
+		r.Delete("/{id}", learningPlanHandler.Delete)
 	})
 
 	liveHandler := NewLiveHandler(db, cfg, geminiClient, emailClient)

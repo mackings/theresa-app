@@ -441,7 +441,49 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"name":           user.Name,
 		"email_verified": user.EmailVerified,
 		"created_at":     user.CreatedAt,
+		"account_type":   user.AccountType,
 	})
+}
+
+type accountTypeRequest struct {
+	AccountType string `json:"account_type"`
+}
+
+// AccountType records whether this user is using Theresa personally or on
+// behalf of an organization - captured once, the first time they open the
+// learning plans feature (see AccountTypeGate on the frontend). Idempotent:
+// calling it again just overwrites, since there's no reason to special-case
+// an already-set value.
+func (h *AuthHandler) AccountType(w http.ResponseWriter, r *http.Request) {
+	userIDHex, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	userID, err := bson.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req accountTypeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.AccountType != "personal" && req.AccountType != "organization" {
+		writeError(w, http.StatusBadRequest, "account_type must be \"personal\" or \"organization\"")
+		return
+	}
+
+	if _, err := h.users().UpdateOne(r.Context(), bson.M{"_id": userID}, bson.M{
+		"$set": bson.M{"account_type": req.AccountType},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save account type")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"account_type": req.AccountType})
 }
 
 func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, token string) {

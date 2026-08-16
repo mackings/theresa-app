@@ -1,15 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Loader2, PenLine } from "lucide-react";
 import { SessionEvent } from "@/types/board";
 import { Whiteboard } from "@/components/board/Whiteboard";
 import { DiagramBoard } from "@/components/board/DiagramBoard";
+import { CodeBoard } from "@/components/board/CodeBoard";
 import type { BoardAudioSync } from "@/lib/board/audioSync";
+
+// A WebGL canvas can't SSR and is a live component tree (unlike Mermaid's
+// render-to-static-SVG-string inside a useEffect), so this one board type
+// is dynamically imported client-only rather than mirroring DiagramBoard's
+// plain import - the rest of this file (the sequencer, handleActiveComplete)
+// doesn't need to know the difference, since next/dynamic's result is still
+// just a normal component.
+const ThreeDBoard = dynamic(
+  () => import("@/components/board/ThreeDBoard").then((m) => m.ThreeDBoard),
+  { ssr: false }
+);
 
 function isRenderableBoardEvent(e: SessionEvent): boolean {
   return (
     e.type === "board_update" &&
     !!e.board &&
-    (e.board.kind === "lines" || e.board.kind === "diagram" || e.board.kind === "clear")
+    (e.board.kind === "lines" ||
+      e.board.kind === "diagram" ||
+      e.board.kind === "code" ||
+      e.board.kind === "3d" ||
+      e.board.kind === "clear")
   );
 }
 
@@ -164,8 +181,8 @@ export function Board({
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--color-bg)] px-6 py-10">
-      <div className="mx-auto w-full max-w-2xl">
+    <div className="h-full overflow-y-auto bg-[var(--color-bg)] px-4 py-10">
+      <div className="w-full">
         <div className="min-h-[420px] rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-lg)]">
           <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
             <span className="flex items-center gap-1.5">
@@ -188,6 +205,21 @@ export function Board({
                   key={event.seq}
                   title={board.title}
                   mermaid={board.mermaid ?? ""}
+                  onComplete={isActive ? handleActiveComplete : noop}
+                />
+              ) : board.kind === "code" ? (
+                <CodeBoard
+                  key={event.seq}
+                  title={board.title}
+                  code={board.code ?? ""}
+                  language={board.code_language}
+                  onComplete={isActive ? handleActiveComplete : noop}
+                />
+              ) : board.kind === "3d" ? (
+                <ThreeDBoard
+                  key={event.seq}
+                  title={board.title}
+                  scene3d={board.scene3d ?? { parts: [] }}
                   onComplete={isActive ? handleActiveComplete : noop}
                 />
               ) : (

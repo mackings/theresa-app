@@ -64,6 +64,25 @@ func EnsureIndexes(ctx context.Context, database *mongo.Database) error {
 		return fmt.Errorf("create credit_transactions user_id/created_at index: %w", err)
 	}
 
+	_, err = database.Collection("learning_plans").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "owner_id", Value: 1}, {Key: "updated_at", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("create learning_plans owner_id/updated_at index: %w", err)
+	}
+
+	// Unique: enforces "one quiz per session" at the database level too, not
+	// just via GetOrCreate's own FindOne-before-insert check - closes the
+	// race where two concurrent GetOrCreate calls could both pass that
+	// check and insert two quizzes for the same session.
+	_, err = database.Collection("quizzes").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "session_id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		return fmt.Errorf("create quizzes session_id index: %w", err)
+	}
+
 	// Unique but sparse: only "purchase" rows ever set flw_tx_ref, and this
 	// is exactly what makes crediting idempotent against Flutterwave's
 	// webhook retries - a second insert attempt for the same tx_ref fails

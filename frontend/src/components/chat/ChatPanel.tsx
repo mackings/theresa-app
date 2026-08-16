@@ -1,14 +1,25 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { AlertCircle, FileCheck2, FolderOpen, Loader2, Paperclip, RotateCcw, Send } from "lucide-react";
+import { AlertCircle, Code2, FileCheck2, FolderOpen, Loader2, Paperclip, RotateCcw, Send } from "lucide-react";
 import { streamSessionMessage, ApiError } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { DocumentLibrary } from "@/components/chat/DocumentLibrary";
+import { CodePracticeSheet } from "@/components/chat/CodePracticeSheet";
 import { IconButton } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { useDocumentUpload } from "@/lib/useDocumentUpload";
 import { DocumentMeta, SessionEvent } from "@/types/board";
+
+// Used to pre-select the practice sheet's language dropdown - the student's
+// most recently-taught code snippet is the most likely thing they'd want to
+// practice next.
+function mostRecentCodeLanguage(events: SessionEvent[]): string | undefined {
+  const codeEvents = events
+    .filter((e) => e.type === "board_update" && e.board?.kind === "code")
+    .sort((a, b) => b.seq - a.seq);
+  return codeEvents[0]?.board?.code_language;
+}
 
 const SUGGESTIONS = [
   "Explain a concept: ",
@@ -69,6 +80,7 @@ export function ChatPanel({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showPractice, setShowPractice] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     doc,
@@ -81,15 +93,16 @@ export function ChatPanel({
 
   const turns = groupIntoTurns(events);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!text.trim() || sending || solving) return;
+  // Shared by the composer's own submit and the code practice sheet's "Send
+  // for feedback" - both are just "send this message text through the same
+  // session" with the same sending/board-arrival/error handling, so neither
+  // duplicates streamSessionMessage's call site.
+  async function sendMessage(messageText: string) {
+    if (!messageText.trim() || sending || solving) return;
 
     setError(null);
     setSending(true);
     onSolvingChange?.(true);
-    const messageText = text;
-    setText("");
 
     let firstBoardArrived = false;
     try {
@@ -115,6 +128,19 @@ export function ChatPanel({
       setSending(false);
       onSolvingChange?.(false);
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!text.trim() || sending || solving) return;
+    const messageText = text;
+    setText("");
+    await sendMessage(messageText);
+  }
+
+  async function handlePracticeSend(message: string) {
+    setShowPractice(false);
+    await sendMessage(message);
   }
 
   return (
@@ -224,6 +250,15 @@ export function ChatPanel({
           >
             <FolderOpen className="h-4 w-4" />
           </IconButton>
+          <IconButton
+            type="button"
+            variant="ghost"
+            aria-label="Practice writing code"
+            onClick={() => setShowPractice(true)}
+            className="h-8 w-8 shrink-0 rounded-[var(--radius-full)]"
+          >
+            <Code2 className="h-4 w-4" />
+          </IconButton>
           <input
             type="text"
             value={text}
@@ -246,6 +281,15 @@ export function ChatPanel({
           </IconButton>
         </div>
       </form>
+
+      {showPractice && (
+        <CodePracticeSheet
+          defaultLanguage={mostRecentCodeLanguage(events)}
+          sending={sending}
+          onSend={handlePracticeSend}
+          onClose={() => setShowPractice(false)}
+        />
+      )}
     </div>
   );
 }

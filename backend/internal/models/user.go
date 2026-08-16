@@ -54,4 +54,12 @@ type User struct {
 	Notified50Percent    bool  `bson:"notified_50_percent"`
 	Notified75Percent    bool  `bson:"notified_75_percent"`
 	Notified95Percent    bool  `bson:"notified_95_percent"`
+
+	// AccountType is "personal" or "organization", captured once (via
+	// POST /api/auth/account-type) the first time a user opens the learning
+	// plans feature. Purely a demand-signal flag for now - it doesn't gate
+	// or change any behavior yet, it just tells us whether real batch/org
+	// teaching demand exists before we build for it. Empty on every
+	// existing account until they hit that gate.
+	AccountType string `bson:"account_type,omitempty"`
 }

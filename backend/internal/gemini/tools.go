@@ -59,6 +59,83 @@ var ClearBoardFunctionDeclaration = &genai.FunctionDeclaration{
 	},
 }
 
+// ShowCodeFunctionDeclaration lets the model show a real, syntax-highlighted,
+// multi-line code example on its own board - for a programming lesson's
+// actual code worth studying, not a short inline mention (show_working's
+// existing inline-backtick/fenced-block support within "lines" already
+// covers that shorter case). Call this alongside show_working for narration,
+// never as a substitute for actually explaining what the code does.
+var ShowCodeFunctionDeclaration = &genai.FunctionDeclaration{
+	Name:        "show_code",
+	Description: "Show a real, syntax-highlighted, multi-line code example on its own board - for a genuine teaching example, not a short inline mention (use show_working's inline backticks/fenced block for that).",
+	Parameters: &genai.Schema{
+		Type:     genai.TypeObject,
+		Required: []string{"code", "language"},
+		Properties: map[string]*genai.Schema{
+			"title":    {Type: genai.TypeString},
+			"code":     {Type: genai.TypeString},
+			"language": {Type: genai.TypeString},
+		},
+	},
+}
+
+// scene3DShapeEnum is the closed set of primitive shapes the procedural 3D
+// scene vocabulary can use - matches the Three.js geometries ThreeDBoard.tsx
+// actually renders (sphereGeometry/boxGeometry/etc.), never arbitrary
+// shape names.
+var scene3DShapeEnum = []string{"sphere", "box", "cylinder", "cone", "torus", "capsule"}
+
+// Show3DModelFunctionDeclaration lets the model show a small interactive 3D
+// scene - either a real, curated anatomy model (asset_key, a closed enum -
+// see AnatomyAssets) or a small procedural scene of labeled positioned
+// shapes (parts, optionally connected by links) for anything else: a
+// molecule, a geometric shape, a kid-friendly diagram, or an anatomy topic
+// not yet in the curated real-asset set. Exactly one of asset_key/parts is
+// meaningful per call - BuildBoardContent decides which, preferring
+// asset_key when it's a recognized key (see its own doc comment).
+var Show3DModelFunctionDeclaration = &genai.FunctionDeclaration{
+	Name: "show_3d_model",
+	Description: "Show a small interactive 3D scene the student can drag to rotate. For one of the " +
+		"curated real anatomy organs, pass asset_key. For anything else - a molecule, a geometric " +
+		"shape, a kid-friendly diagram, or an anatomy topic not in the curated list - pass parts " +
+		"(and optionally links) instead: simple labeled shapes positioned in 3D space.",
+	Parameters: &genai.Schema{
+		Type: genai.TypeObject,
+		Properties: map[string]*genai.Schema{
+			"caption":   {Type: genai.TypeString},
+			"asset_key": {Type: genai.TypeString, Format: "enum", Enum: AnatomyAssetKeys()},
+			"parts": {
+				Type: genai.TypeArray,
+				Items: &genai.Schema{
+					Type:     genai.TypeObject,
+					Required: []string{"label", "shape", "x", "y", "z"},
+					Properties: map[string]*genai.Schema{
+						"label": {Type: genai.TypeString},
+						"shape": {Type: genai.TypeString, Format: "enum", Enum: scene3DShapeEnum},
+						"color": {Type: genai.TypeString},
+						"size":  {Type: genai.TypeNumber},
+						"x":     {Type: genai.TypeNumber},
+						"y":     {Type: genai.TypeNumber},
+						"z":     {Type: genai.TypeNumber},
+					},
+				},
+			},
+			"links": {
+				Type: genai.TypeArray,
+				Items: &genai.Schema{
+					Type:     genai.TypeObject,
+					Required: []string{"from", "to"},
+					Properties: map[string]*genai.Schema{
+						"from":  {Type: genai.TypeString},
+						"to":    {Type: genai.TypeString},
+						"label": {Type: genai.TypeString},
+					},
+				},
+			},
+		},
+	},
+}
+
 // ChatCheckInFunctionDeclaration is text mode's equivalent of voice simply
 // pausing to ask a real question out loud. Text has no speech channel, so a
 // genuine conversational check-in needs its own explicit call to be told
@@ -84,6 +161,8 @@ var BoardTools = []*genai.Tool{
 	{FunctionDeclarations: []*genai.FunctionDeclaration{
 		ShowWorkingFunctionDeclaration,
 		DrawDiagramFunctionDeclaration,
+		ShowCodeFunctionDeclaration,
+		Show3DModelFunctionDeclaration,
 		ClearBoardFunctionDeclaration,
 	}},
 }
@@ -94,6 +173,8 @@ var TextTools = []*genai.Tool{
 	{FunctionDeclarations: []*genai.FunctionDeclaration{
 		ShowWorkingFunctionDeclaration,
 		DrawDiagramFunctionDeclaration,
+		ShowCodeFunctionDeclaration,
+		Show3DModelFunctionDeclaration,
 		ChatCheckInFunctionDeclaration,
 		ClearBoardFunctionDeclaration,
 	}},
@@ -125,6 +206,32 @@ func BuildBoardContent(name string, args map[string]any) (models.BoardContent, b
 		title, _ := args["title"].(string)
 		return models.BoardContent{Kind: "diagram", Title: title, Mermaid: mermaid}, true
 
+	case "show_code":
+		code, _ := args["code"].(string)
+		if strings.TrimSpace(code) == "" {
+			return models.BoardContent{}, false
+		}
+		language, _ := args["language"].(string)
+		title, _ := args["title"].(string)
+		return models.BoardContent{Kind: "code", Title: title, Code: code, CodeLanguage: normalizeCodeLanguage(language)}, true
+
+	case "show_3d_model":
+		caption, _ := args["caption"].(string)
+		if assetKey, _ := args["asset_key"].(string); assetKey != "" {
+			if _, ok := AnatomyAssets[assetKey]; ok {
+				return models.BoardContent{Kind: "3d", Scene3D: &models.Scene3D{AssetKey: assetKey, Caption: caption}}, true
+			}
+			// An unrecognized/hallucinated asset_key isn't a hard failure -
+			// fall through to the procedural parts/links path below, same as
+			// if asset_key had never been given at all.
+		}
+		parts, ok := parseScene3DParts(args["parts"])
+		if !ok {
+			return models.BoardContent{}, false
+		}
+		links := parseScene3DLinks(args["links"], parts)
+		return models.BoardContent{Kind: "3d", Scene3D: &models.Scene3D{Caption: caption, Parts: parts, Links: links}}, true
+
 	case "chat_checkin":
 		message, _ := args["message"].(string)
 		if strings.TrimSpace(message) == "" {
@@ -138,6 +245,131 @@ func BuildBoardContent(name string, args map[string]any) (models.BoardContent, b
 	default:
 		return models.BoardContent{}, false
 	}
+}
+
+// maxScene3DParts/maxScene3DLinks bound a procedural 3D scene's size -
+// same "Gemini schema compliance alone isn't reliable, cap in code" spirit
+// as every other defensive limit in this file, since this schema (like
+// learningplan.go's) deliberately carries no MinItems/MaxItems.
+const maxScene3DParts = 12
+const maxScene3DLinks = 20
+
+var validScene3DShapes = map[string]bool{
+	"sphere": true, "box": true, "cylinder": true, "cone": true, "torus": true, "capsule": true,
+}
+
+// parseScene3DParts reads the "parts" argument off a show_3d_model call -
+// manual type assertions per element (never a blind struct unmarshal, same
+// discipline as the rest of this file), tolerant of individual bad
+// elements rather than failing the whole call over one. An element missing
+// a non-empty label is dropped outright; an unrecognized (or missing)
+// shape defaults to "sphere" rather than dropping the part, since the part
+// still needs to exist for any link pointing at it to remain valid. Size
+// defaults to 1 when absent or non-positive. Returns ok=false only when
+// zero usable parts remain.
+func parseScene3DParts(raw any) ([]models.Scene3DPart, bool) {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, false
+	}
+
+	parts := make([]models.Scene3DPart, 0, len(items))
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		label, _ := m["label"].(string)
+		if strings.TrimSpace(label) == "" {
+			continue
+		}
+		shape, _ := m["shape"].(string)
+		if !validScene3DShapes[shape] {
+			shape = "sphere"
+		}
+		size, _ := m["size"].(float64)
+		if size <= 0 {
+			size = 1
+		}
+		x, _ := m["x"].(float64)
+		y, _ := m["y"].(float64)
+		z, _ := m["z"].(float64)
+		color, _ := m["color"].(string)
+		parts = append(parts, models.Scene3DPart{
+			Label: label, Shape: shape, Color: color, Size: size, X: x, Y: y, Z: z,
+		})
+		if len(parts) >= maxScene3DParts {
+			break
+		}
+	}
+
+	return parts, len(parts) > 0
+}
+
+// parseScene3DLinks reads the "links" argument, dropping any link whose
+// From/To doesn't match one of parts' labels - never trusts a dangling
+// reference to the frontend renderer. An empty/absent/malformed links
+// argument is fine (most scenes have none); this never fails the call.
+func parseScene3DLinks(raw any, parts []models.Scene3DPart) []models.Scene3DLink {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+
+	validLabels := make(map[string]bool, len(parts))
+	for _, p := range parts {
+		validLabels[p.Label] = true
+	}
+
+	links := make([]models.Scene3DLink, 0, len(items))
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		from, _ := m["from"].(string)
+		to, _ := m["to"].(string)
+		if !validLabels[from] || !validLabels[to] {
+			continue
+		}
+		label, _ := m["label"].(string)
+		links = append(links, models.Scene3DLink{From: from, To: to, Label: label})
+		if len(links) >= maxScene3DLinks {
+			break
+		}
+	}
+
+	return links
+}
+
+// codeLanguageAliases maps common shorthand/alternate spellings Gemini might
+// use to the exact language keys the frontend's CodeMirror language-
+// extension map looks up by - an unrecognized language isn't an error case,
+// it just falls through to the raw lowercased value, which the frontend
+// treats as plain (unhighlighted) text rather than crashing.
+var codeLanguageAliases = map[string]string{
+	"py":     "python",
+	"js":     "javascript",
+	"jsx":    "javascript",
+	"ts":     "typescript",
+	"tsx":    "typescript",
+	"golang": "go",
+	"c++":    "cpp",
+	"c#":     "csharp",
+	"shell":  "bash",
+	"sh":     "bash",
+	"html5":  "html",
+}
+
+// normalizeCodeLanguage lowercases and resolves common aliases so the
+// frontend's language-extension lookup doesn't need to duplicate this
+// mapping - see codeLanguageAliases.
+func normalizeCodeLanguage(raw string) string {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	if alias, ok := codeLanguageAliases[lower]; ok {
+		return alias
+	}
+	return lower
 }
 
 // CoerceStringArray handles Gemini's preview-model quirk of occasionally
@@ -182,7 +414,14 @@ const boardKeyPrefixLen = 80
 // collapses whitespace and compares only a fixed-length prefix rather than
 // the full, exact content.
 func BoardKey(b models.BoardContent) string {
-	joined := strings.Join(b.Lines, " ") + "|" + b.Mermaid + "|" + b.Message
+	scene3DKey := ""
+	if b.Scene3D != nil {
+		scene3DKey = b.Scene3D.AssetKey
+		for _, p := range b.Scene3D.Parts {
+			scene3DKey += p.Label
+		}
+	}
+	joined := strings.Join(b.Lines, " ") + "|" + b.Mermaid + "|" + b.Code + "|" + b.Message + "|" + scene3DKey
 	normalized := strings.Join(strings.Fields(joined), " ")
 	normalized = strings.TrimSuffix(normalized, "…")
 	if len(normalized) > boardKeyPrefixLen {

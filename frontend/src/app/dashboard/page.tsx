@@ -8,6 +8,7 @@ import {
   MessageSquare,
   MessageSquarePlus,
   Mic,
+  NotebookPen,
   Send,
   X,
 } from "lucide-react";
@@ -21,7 +22,12 @@ import { SpeakingOrb } from "@/components/voice/SpeakingOrb";
 import { UploadDropzone } from "@/components/chat/UploadDropzone";
 import { TutorSession, DocumentMeta } from "@/types/board";
 
-type Me = { id: string; email: string; name: string };
+type Me = {
+  id: string;
+  email: string;
+  name: string;
+  account_type?: "personal" | "organization" | "";
+};
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -165,10 +171,7 @@ export default function DashboardPage() {
             placeholder="Ask me anything..."
             className="w-full bg-transparent px-2 py-2 text-sm text-[var(--color-text-primary)] outline-none"
           />
-          <div className="mt-1 flex items-center justify-between px-2">
-            <span className="text-xs text-[var(--color-text-secondary)]">
-              Press enter to start a new session
-            </span>
+          <div className="mt-1 flex items-center justify-end px-2">
             <IconButton
               type="submit"
               variant="primary"
@@ -230,7 +233,7 @@ export default function DashboardPage() {
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
             Quick start
           </p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <FeatureShowcaseCard
               onClick={() => handleCreateSession("text")}
               className={`cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] ${creating ? "pointer-events-none opacity-60" : ""}`}
@@ -253,6 +256,23 @@ export default function DashboardPage() {
               title="New voice session"
               description="Talk it through with Theresa, live"
               preview={<SpeakingOrb state="speaking" size={64} />}
+            />
+            <FeatureShowcaseCard
+              onClick={() => router.push("/learning-plans/new")}
+              className="cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+              title="Create my lesson plan"
+              description="A paced plan Theresa builds and teaches from"
+              preview={
+                <div className="flex w-full max-w-[220px] items-center gap-3 rounded-[var(--radius-md)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-xs)]">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]">
+                    <NotebookPen className="h-4 w-4" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-2 w-24 rounded-full bg-[var(--color-border)]" />
+                    <div className="h-2 w-16 rounded-full bg-[var(--color-border)]" />
+                  </div>
+                </div>
+              }
             />
           </div>
         </div>
