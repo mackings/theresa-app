@@ -85,7 +85,12 @@ export function DiagramBoard({
       )}
 
       {!failed && svg && (
-        <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: svg }} />
+        <div className="flex justify-center overflow-x-auto">
+          <div
+            className="[&_svg]:h-auto [&_svg]:max-w-full"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        </div>
       )}
     </div>
   );

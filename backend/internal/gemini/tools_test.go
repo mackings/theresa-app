@@ -1,6 +1,10 @@
 package gemini
 
-import "testing"
+import (
+	"testing"
+
+	"theresa/backend/internal/models"
+)
 
 func TestCoerceStringArray(t *testing.T) {
 	cases := []struct {
@@ -96,6 +100,143 @@ func TestBuildBoardContent(t *testing.T) {
 		_, ok := BuildBoardContent("update_board", map[string]any{"step": 1})
 		if ok {
 			t.Fatal("expected ok=false for unhandled tool name")
+		}
+	})
+
+	t.Run("show_3d_model with a known asset_key uses the real asset path", func(t *testing.T) {
+		board, ok := BuildBoardContent("show_3d_model", map[string]any{
+			"caption":   "The liver",
+			"asset_key": "liver",
+		})
+		if !ok || board.Kind != "3d" || board.Scene3D == nil {
+			t.Fatalf("unexpected result: ok=%v board=%+v", ok, board)
+		}
+		if board.Scene3D.AssetKey != "liver" || len(board.Scene3D.Parts) != 0 {
+			t.Fatalf("expected asset_key path with no procedural parts: %+v", board.Scene3D)
+		}
+	})
+
+	t.Run("show_3d_model prefers a known asset_key even when parts are also present", func(t *testing.T) {
+		board, ok := BuildBoardContent("show_3d_model", map[string]any{
+			"asset_key": "kidneys",
+			"parts":     []any{map[string]any{"label": "X", "shape": "sphere", "x": 0.0, "y": 0.0, "z": 0.0}},
+		})
+		if !ok || board.Scene3D.AssetKey != "kidneys" || len(board.Scene3D.Parts) != 0 {
+			t.Fatalf("expected asset_key to take precedence over parts: ok=%v board=%+v", ok, board)
+		}
+	})
+
+	t.Run("show_3d_model with an unrecognized asset_key falls back to procedural parts", func(t *testing.T) {
+		board, ok := BuildBoardContent("show_3d_model", map[string]any{
+			"asset_key": "appendix", // not a curated key
+			"parts":     []any{map[string]any{"label": "Blob", "shape": "sphere", "x": 0.0, "y": 0.0, "z": 0.0}},
+		})
+		if !ok || board.Scene3D.AssetKey != "" || len(board.Scene3D.Parts) != 1 {
+			t.Fatalf("expected fallback to procedural parts: ok=%v board=%+v", ok, board)
+		}
+	})
+
+	t.Run("show_3d_model with real parts and no asset_key uses the procedural path", func(t *testing.T) {
+		board, ok := BuildBoardContent("show_3d_model", map[string]any{
+			"caption": "Water molecule",
+			"parts": []any{
+				map[string]any{"label": "O", "shape": "sphere", "color": "red", "x": 0.0, "y": 0.0, "z": 0.0},
+				map[string]any{"label": "H1", "shape": "sphere", "x": 1.0, "y": 0.0, "z": 0.0},
+			},
+			"links": []any{map[string]any{"from": "O", "to": "H1"}},
+		})
+		if !ok || board.Scene3D.AssetKey != "" || len(board.Scene3D.Parts) != 2 || len(board.Scene3D.Links) != 1 {
+			t.Fatalf("unexpected procedural result: ok=%v board=%+v", ok, board)
+		}
+	})
+
+	t.Run("show_3d_model with no asset_key and no usable parts fails", func(t *testing.T) {
+		_, ok := BuildBoardContent("show_3d_model", map[string]any{"caption": "empty"})
+		if ok {
+			t.Fatal("expected ok=false with neither a valid asset_key nor any usable parts")
+		}
+	})
+}
+
+func TestParseScene3DParts(t *testing.T) {
+	t.Run("real parts pass through", func(t *testing.T) {
+		parts, ok := parseScene3DParts([]any{
+			map[string]any{"label": "Carbon", "shape": "sphere", "color": "black", "x": 0.0, "y": 0.0, "z": 0.0},
+		})
+		if !ok || len(parts) != 1 || parts[0].Shape != "sphere" || parts[0].Size != 1 {
+			t.Fatalf("unexpected: ok=%v parts=%+v", ok, parts)
+		}
+	})
+
+	t.Run("unrecognized shape defaults to sphere instead of dropping the part", func(t *testing.T) {
+		parts, ok := parseScene3DParts([]any{
+			map[string]any{"label": "Mystery", "shape": "dodecahedron", "x": 0.0, "y": 0.0, "z": 0.0},
+		})
+		if !ok || len(parts) != 1 || parts[0].Shape != "sphere" {
+			t.Fatalf("expected shape fallback to sphere, got: ok=%v parts=%+v", ok, parts)
+		}
+	})
+
+	t.Run("a part missing its label is dropped", func(t *testing.T) {
+		parts, ok := parseScene3DParts([]any{
+			map[string]any{"shape": "box", "x": 0.0, "y": 0.0, "z": 0.0},
+			map[string]any{"label": "Real", "shape": "box", "x": 0.0, "y": 0.0, "z": 0.0},
+		})
+		if !ok || len(parts) != 1 || parts[0].Label != "Real" {
+			t.Fatalf("expected only the labeled part to survive: ok=%v parts=%+v", ok, parts)
+		}
+	})
+
+	t.Run("zero usable parts fails", func(t *testing.T) {
+		_, ok := parseScene3DParts([]any{map[string]any{"shape": "box"}})
+		if ok {
+			t.Fatal("expected ok=false when no part has a real label")
+		}
+	})
+
+	t.Run("wrong top-level type fails", func(t *testing.T) {
+		_, ok := parseScene3DParts("not an array")
+		if ok {
+			t.Fatal("expected ok=false for a non-array argument")
+		}
+	})
+
+	t.Run("more than maxScene3DParts is capped", func(t *testing.T) {
+		items := make([]any, 0, maxScene3DParts+5)
+		for i := 0; i < maxScene3DParts+5; i++ {
+			items = append(items, map[string]any{"label": "P", "shape": "sphere", "x": 0.0, "y": 0.0, "z": 0.0})
+		}
+		parts, ok := parseScene3DParts(items)
+		if !ok || len(parts) != maxScene3DParts {
+			t.Fatalf("expected exactly %d parts, got %d (ok=%v)", maxScene3DParts, len(parts), ok)
+		}
+	})
+}
+
+func TestParseScene3DLinks(t *testing.T) {
+	parts := []models.Scene3DPart{
+		{Label: "A", Shape: "sphere"},
+		{Label: "B", Shape: "sphere"},
+	}
+
+	t.Run("a link between two real parts survives", func(t *testing.T) {
+		links := parseScene3DLinks([]any{map[string]any{"from": "A", "to": "B"}}, parts)
+		if len(links) != 1 {
+			t.Fatalf("expected 1 link, got %+v", links)
+		}
+	})
+
+	t.Run("a dangling reference is dropped, not trusted", func(t *testing.T) {
+		links := parseScene3DLinks([]any{map[string]any{"from": "A", "to": "Ghost"}}, parts)
+		if len(links) != 0 {
+			t.Fatalf("expected the dangling link to be dropped, got %+v", links)
+		}
+	})
+
+	t.Run("no links is fine, never fails", func(t *testing.T) {
+		links := parseScene3DLinks(nil, parts)
+		if links != nil {
+			t.Fatalf("expected nil/empty links for absent input, got %+v", links)
 		}
 	})
 }

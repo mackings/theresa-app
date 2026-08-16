@@ -1,10 +1,39 @@
-export type BoardKind = "lines" | "diagram" | "clear";
+export type BoardKind = "lines" | "diagram" | "code" | "3d" | "clear";
+
+export interface Scene3DPart {
+  label: string;
+  shape: "sphere" | "box" | "cylinder" | "cone" | "torus" | "capsule";
+  color?: string;
+  size?: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface Scene3DLink {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+export interface Scene3D {
+  caption?: string;
+  // Set for a real, curated anatomy model (see lib/board/anatomyAssets.ts) -
+  // parts/links are meaningless when this is set. Empty for a procedural
+  // scene instead.
+  asset_key?: string;
+  parts?: Scene3DPart[];
+  links?: Scene3DLink[];
+}
 
 export interface BoardContentBlock {
   kind: BoardKind;
   title?: string;
   lines?: string[];
   mermaid?: string;
+  code?: string;
+  code_language?: string;
+  scene3d?: Scene3D;
 }
 
 export interface SessionEvent {

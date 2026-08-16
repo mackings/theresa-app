@@ -208,13 +208,28 @@ func (h *LiveHandler) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	// off.
 	if !resumed {
 		isBrandNew := len(session.Events) == 0
+		var docSummary string
 		if doc, ok := h.firstUnderstoodDocument(r.Context(), session); ok {
+			docSummary = doc.ExtractedSummary
+		}
+
+		if session.LearningPlanStepTitle != "" {
+			// This session was started from a specific learning-plan step -
+			// ground the opening turn in that step's own topic/objectives
+			// (narrower than the whole-document greeting below), so voice
+			// mode teaches today's topic instead of either a generic
+			// greeting or the entire uploaded course at once.
+			prompt := live.LearningPlanStepPrompt(user.Name, session.LearningPlanStepTitle, session.LearningPlanStepObjectives, docSummary, session.LearningPlanStepPronunciationNotes, isBrandNew)
+			if err := liveSession.SendText(prompt); err != nil {
+				log.Printf("failed to send learning-plan-step opening message: %v", err)
+			}
+		} else if docSummary != "" {
 			// A document is attached - ground the opening turn in its
 			// summary instead of the generic greeting, so voice mode
 			// actually knows what it's teaching instead of starting a
 			// random, unrelated conversation. See GreetingWithDocumentPrompt
 			// for why this uses the summary rather than attaching the file.
-			prompt := live.GreetingWithDocumentPrompt(user.Name, doc.ExtractedSummary, isBrandNew)
+			prompt := live.GreetingWithDocumentPrompt(user.Name, docSummary, isBrandNew)
 			if err := liveSession.SendText(prompt); err != nil {
 				log.Printf("failed to send document-grounded opening message: %v", err)
 			}

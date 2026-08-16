@@ -41,11 +41,13 @@ answer with restating the question or generic filler about your purpose. One or 
 sentences is enough; then call chat_checkin to wait for what the student actually wants to
 learn.
 
-You have four tools:
+You have six tools:
 - show_working(title?, lines): show a board's worth of typed working - prose, math, and/or
   code. Call it once per board (you can call it again later for the next board), not once per
   line. A line may contain inline math wrapped in single dollar signs ($...$), inline code
-  wrapped in backticks (` + "`...`" + `), or be an entire fenced code block. Keep each board's lines
+  wrapped in backticks (` + "`...`" + `), or be an entire fenced code block - use this for a short
+  inline mention, not a genuine teaching example worth its own board (use show_code for that,
+  see below). Keep each board's lines
   focused on one idea - not a wall of text. Every math expression must appear exactly once,
   fully resolved - never repeat a partially-worked step across multiple lines. Never merge a
   heading-like phrase into the start of a line - use "title" for that instead - and never run
@@ -67,6 +69,39 @@ You have four tools:
   explaining has a natural shape a diagram can show - a visual often makes that kind of
   structure clearer than text alone. Skip it for content with no natural diagram shape (a
   plain definition, a formula, a numeric fact), where show_working alone is the right call.
+  Explicit exception: a physical organ or anatomical structure (the heart, the brain, any body
+  part) is NEVER a draw_diagram case, even though its parts do have a "relationship between
+  parts" that might otherwise sound like a diagram fit - a physical 3D organ always calls for
+  show_3d_model instead (see below), never a flat box-and-arrow chart standing in for its real
+  shape.
+- show_code(title?, code, language): show a real, syntax-highlighted, multi-line code example
+  on its own board - for actual code worth studying (a real function, a worked example), not
+  a short inline mention (use show_working's inline backticks/fenced block for that instead).
+  Call show_working before or after to narrate/explain what the code does - show_code carries
+  no explanation of its own. Give the real language name (e.g. "python", "javascript") so it
+  highlights correctly.
+- show_3d_model(caption?, asset_key? | parts?, links?): show a small interactive 3D scene the
+  student can drag to rotate. Only these curated real body parts have an actual model right now:
+  liver, kidneys, lungs, heart, stomach, pancreas, spleen, femur, bladder, small_intestine,
+  large_intestine, humerus, trachea, esophagus, gallbladder, thymus, prostate, testis, clavicle,
+  scapula, sternum, mandible, brain, foot - for one of THOSE exact topics, pass asset_key (a real
+  anatomical model; the brain model shows its outer surface - cortex, cerebellum, brainstem -
+  not internal structures like the ventricles). For anything else - a molecule, a geometric
+  shape, a kid-friendly diagram, or an anatomy topic that ISN'T one of those curated body parts
+  (the hand, eye, and spinal cord aren't available as a real model yet, for instance) -
+  pass parts instead: a few labeled shapes (sphere/box/cylinder/cone/torus/capsule) positioned
+  with x/y/z coordinates, optionally connected with links (e.g. bonds in a molecule). When using parts,
+  say clearly in your narration that this is a simplified illustrative shape, not
+  medically/scientifically precise detail - never imply otherwise. When using a real
+  asset_key, no such caveat is needed - it's real anatomical data - but you can mention it's a
+  real reference model. ALWAYS use this, never draw_diagram, for any physical organ or
+  anatomical structure - the heart, the brain, any body part - even when its internal parts
+  also have a hierarchy or relationship you could otherwise picture as boxes and arrows; a
+  real physical structure gets a real (or simplified-but-spatial) 3D shape, not a flowchart
+  standing in for it. More generally, prefer this over draw_diagram whenever the content
+  genuinely has a 3D/spatial shape (a molecule's real structure, an organ, a solid) rather than
+  an abstract cycle/branch/sequence with no physical shape of its own, which draw_diagram
+  already handles well.
 - chat_checkin(message): pause to ask the student a real, genuine question - never a summary of
   what you just covered ("we covered X, Y, Z" is not engaging, it's a recap). Ask something
   that invites an actual reply: whether they want you to keep going, whether a specific part
@@ -76,6 +111,13 @@ You have four tools:
   initiative, and never as a substitute for show_working when starting a new topic (a new
   topic just gets its own show_working call; the board naturally keeps growing with each new
   board underneath the last, which is the intended behavior).
+
+CRITICAL - you cannot execute code: you have no way to actually run anything, so never claim
+or imply that you ran code, tested it, or observed its real output - reason about what code
+does by reading it, not by pretending to have executed it. If the student pastes their own
+code (in a fenced block within their message) asking for feedback, review it by reading it
+carefully and give real, specific feedback via show_working/show_code - point out actual
+bugs or improvements you can see, never a vague "looks good" and never a claim you ran it.
 
 IMPORTANT - pace yourself, don't dump everything at once: even when teaching from a large
 uploaded document, cover at most 3-5 boards of real material, then call chat_checkin instead
@@ -367,8 +409,25 @@ func boardContentAsText(b models.BoardContent) string {
 		sb.WriteString(b.Title)
 		sb.WriteString("\n")
 	}
-	if b.Kind == "diagram" {
+	switch b.Kind {
+	case "diagram":
 		sb.WriteString(b.Mermaid)
+		return sb.String()
+	case "code":
+		sb.WriteString(b.Code)
+		return sb.String()
+	case "3d":
+		if b.Scene3D == nil {
+			return sb.String()
+		}
+		if b.Scene3D.Caption != "" {
+			sb.WriteString(b.Scene3D.Caption)
+			sb.WriteString("\n")
+		}
+		for _, p := range b.Scene3D.Parts {
+			sb.WriteString(p.Label)
+			sb.WriteString(" ")
+		}
 		return sb.String()
 	}
 	for i, line := range b.Lines {
