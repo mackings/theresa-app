@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { NotebookPen, Plus, Sparkles } from "lucide-react";
+import { GraduationCap, NotebookPen, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Pill } from "@/components/ui/Pill";
 import { AccountTypeGate } from "@/features/learning-plans/components/AccountTypeGate";
 import { PlanCard } from "@/features/learning-plans/components/PlanCard";
+import { ContinueLearning } from "@/features/learning-plans/components/ContinueLearning";
 import { listLearningPlans } from "@/features/learning-plans/lib/api";
 import { LearningPlan } from "@/features/learning-plans/types";
 
@@ -35,12 +35,18 @@ export default function LearningPlansPage() {
     <AppShell>
       <div className="mx-auto max-w-4xl space-y-8 px-6 py-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Pill icon={<Sparkles className="h-3 w-3" />}>Paced by Theresa</Pill>
-            <h1 className="mt-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">
-              <NotebookPen className="h-6 w-6 text-[var(--color-accent)]" />
-              Learning plans
-            </h1>
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]">
+              <GraduationCap className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">
+                Learning plans
+              </h1>
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                Paced, day-by-day plans Theresa builds and teaches from.
+              </p>
+            </div>
           </div>
           <Button
             variant="primary"
@@ -54,6 +60,8 @@ export default function LearningPlansPage() {
         {!me.account_type && (
           <AccountTypeGate onDone={(accountType) => setMe({ ...me, account_type: accountType })} />
         )}
+
+        {plans !== null && plans.length > 0 && <ContinueLearning plans={plans} />}
 
         {plans === null && (
           <p className="text-sm text-[var(--color-text-secondary)]">Loading…</p>
@@ -79,14 +87,19 @@ export default function LearningPlansPage() {
         )}
 
         {plans !== null && plans.length > 0 && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {plans.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                plan={plan}
-                onClick={() => router.push(`/learning-plans/${plan.id}`)}
-              />
-            ))}
+          <div>
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
+              All plans
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {plans.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  onClick={() => router.push(`/learning-plans/${plan.id}`)}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>

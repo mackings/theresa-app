@@ -6,6 +6,7 @@ import { Check, ClipboardCheck, Mic, MessageSquare, X } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/Button";
 import { LearningPlan, LearningPlanStep } from "@/features/learning-plans/types";
 import { startPlanStep } from "@/features/learning-plans/lib/api";
+import { subjectPaletteFor } from "@/features/learning-plans/lib/subjectColor";
 import { QuizPanel } from "@/features/quiz/components/QuizPanel";
 
 export function PlanStepList({ plan }: { plan: LearningPlan }) {
@@ -17,6 +18,13 @@ export function PlanStepList({ plan }: { plan: LearningPlan }) {
   // rather than on the general session page.
   const [quizSessionId, setQuizSessionId] = useState<string | null>(null);
   const steps = plan.steps ?? [];
+  const palette = subjectPaletteFor(plan.id);
+  const startedCount = steps.filter((s) => s.session_id).length;
+  // The first not-yet-started step gets a "start here" pulse - an
+  // approximate progress marker, not a hard prerequisite gate (any step can
+  // still be started out of order, same as before).
+  const nextIndex = steps.findIndex((s) => !s.session_id);
+  const progressPercent = steps.length > 0 ? (startedCount / steps.length) * 100 : 0;
 
   async function handleStart(step: LearningPlanStep, mode: "voice" | "text") {
     if (starting !== null) return;
@@ -35,35 +43,43 @@ export function PlanStepList({ plan }: { plan: LearningPlan }) {
 
   return (
     <div className="relative">
-      {/* The connecting timeline line - positioned behind the numbered
-          circles, spanning from the first to the last step. Purely
-          decorative, gives the plan a "path you walk through" feel instead
-          of a flat list of unrelated cards. */}
+      {/* The connecting path line - colored up to how far the plan's been
+          started (an approximation, assuming roughly even step heights, not
+          a pixel-measured value) and muted beyond that - gives the plan a
+          real "path you walk through" feel, colored to match this plan's
+          own subject identity (see PlanCard/ContinueLearning). */}
       <div
         aria-hidden
-        className="absolute left-[19px] top-6 bottom-6 w-px bg-[var(--color-border)]"
+        className="absolute left-[23px] top-7 bottom-7 w-0.5 rounded-full"
+        style={{
+          background: `linear-gradient(to bottom, ${palette.ring} ${progressPercent}%, var(--color-border) ${progressPercent}%)`,
+        }}
       />
 
       <div className="space-y-4">
         {steps.map((step) => {
           const started = !!step.session_id;
+          const isNext = step.index === nextIndex;
           const isStarting = starting === step.index;
           return (
             <div key={step.index} className="relative flex gap-4">
               <div
-                className={`z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-full)] border text-sm font-semibold ${
+                className={`z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-full)] border-2 text-sm font-semibold transition-all ${
                   started
-                    ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
-                    : "border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text-secondary)]"
+                    ? `${palette.solid} border-transparent text-white`
+                    : isNext
+                      ? `bg-[var(--color-surface-raised)] ${palette.text} animate-pulse`
+                      : "border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text-secondary)]"
                 }`}
+                style={!started ? { borderColor: isNext ? palette.ring : undefined } : undefined}
               >
-                {started ? <Check className="h-4 w-4" /> : step.index + 1}
+                {started ? <Check className="h-5 w-5" /> : step.index + 1}
               </div>
 
               <div className="flex-1 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-xs)] transition-shadow hover:shadow-[var(--shadow-sm)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-accent)]">
+                    <p className={`text-xs font-medium uppercase tracking-wide ${palette.text}`}>
                       {step.label}
                     </p>
                     <p className="mt-0.5 text-sm font-semibold text-[var(--color-text-primary)]">
@@ -118,7 +134,7 @@ export function PlanStepList({ plan }: { plan: LearningPlan }) {
                         key={i}
                         className="flex items-start gap-1.5 text-xs text-[var(--color-text-secondary)]"
                       >
-                        <Check className="mt-0.5 h-3 w-3 shrink-0 text-[var(--color-accent)]" />
+                        <Check className={`mt-0.5 h-3 w-3 shrink-0 ${palette.text}`} />
                         {o}
                       </li>
                     ))}

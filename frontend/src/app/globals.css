@@ -17,6 +17,22 @@
   --color-danger: #dc2626;
   --color-danger-foreground: #ffffff;
 
+  /* A small rotating palette used only to give learning plans a distinct
+     "subject" identity (course cards, progress rings, step paths) - kept
+     separate from --color-accent/--color-voice, which stay the app's one
+     brand hue everywhere else. Muted/adult-toned to match the existing
+     teal's character, not a candy-bright gamified palette. */
+  --color-subject-blue: #3468a8;
+  --color-subject-blue-foreground: #ffffff;
+  --color-subject-purple: #7256a5;
+  --color-subject-purple-foreground: #ffffff;
+  --color-subject-orange: #b5651d;
+  --color-subject-orange-foreground: #ffffff;
+  --color-subject-pink: #a34a6b;
+  --color-subject-pink-foreground: #ffffff;
+  --color-subject-amber: #a17f1a;
+  --color-subject-amber-foreground: #ffffff;
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
@@ -44,6 +60,17 @@
   --color-danger: #f87171;
   --color-danger-foreground: #1a0000;
 
+  --color-subject-blue: #5b8fd6;
+  --color-subject-blue-foreground: #ffffff;
+  --color-subject-purple: #9b82cf;
+  --color-subject-purple-foreground: #ffffff;
+  --color-subject-orange: #d98c4a;
+  --color-subject-orange-foreground: #ffffff;
+  --color-subject-pink: #cf7a9a;
+  --color-subject-pink-foreground: #ffffff;
+  --color-subject-amber: #cfa93f;
+  --color-subject-amber-foreground: #ffffff;
+
   --shadow-xs: 0 0 0 1px rgba(255, 255, 255, 0.04);
   --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 6px 16px rgba(0, 0, 0, 0.35);
@@ -67,6 +94,17 @@
     --color-danger: #f87171;
     --color-danger-foreground: #1a0000;
 
+    --color-subject-blue: #5b8fd6;
+    --color-subject-blue-foreground: #ffffff;
+    --color-subject-purple: #9b82cf;
+    --color-subject-purple-foreground: #ffffff;
+    --color-subject-orange: #d98c4a;
+    --color-subject-orange-foreground: #ffffff;
+    --color-subject-pink: #cf7a9a;
+    --color-subject-pink-foreground: #ffffff;
+    --color-subject-amber: #cfa93f;
+    --color-subject-amber-foreground: #ffffff;
+
     --shadow-xs: 0 0 0 1px rgba(255, 255, 255, 0.04);
     --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 6px 16px rgba(0, 0, 0, 0.35);
@@ -89,6 +127,16 @@
   --color-voice-foreground: var(--color-voice-foreground);
   --color-danger: var(--color-danger);
   --color-danger-foreground: var(--color-danger-foreground);
+  --color-subject-blue: var(--color-subject-blue);
+  --color-subject-blue-foreground: var(--color-subject-blue-foreground);
+  --color-subject-purple: var(--color-subject-purple);
+  --color-subject-purple-foreground: var(--color-subject-purple-foreground);
+  --color-subject-orange: var(--color-subject-orange);
+  --color-subject-orange-foreground: var(--color-subject-orange-foreground);
+  --color-subject-pink: var(--color-subject-pink);
+  --color-subject-pink-foreground: var(--color-subject-pink-foreground);
+  --color-subject-amber: var(--color-subject-amber);
+  --color-subject-amber-foreground: var(--color-subject-amber-foreground);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);

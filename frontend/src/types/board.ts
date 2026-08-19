@@ -54,6 +54,11 @@ export interface TutorSession {
   created_at: string;
   updated_at: string;
   events?: SessionEvent[];
+  // Set only for a session started from a learning-plan step (see
+  // features/learning-plans/lib/api.ts's startPlanStep) - used to build
+  // "continue learning" history on the learning-plans page.
+  learning_plan_id?: string;
+  learning_plan_step_index?: number;
 }
 
 export interface DocumentMeta {

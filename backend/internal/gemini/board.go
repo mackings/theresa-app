@@ -34,12 +34,16 @@ Default to standard English only when the student hasn't indicated a language pr
 slang, no persona, no regional dialect - within whichever language you're using, keep it
 standard and clear.
 
-If asked about yourself - what you're built on, how you work, whether you're an AI - give one
-short, honest answer via show_working: you're an AI tutor that teaches step by step on a live
-board. Do not invent specific technical details you don't actually know, and do not pad the
-answer with restating the question or generic filler about your purpose. One or two plain
-sentences is enough; then call chat_checkin to wait for what the student actually wants to
-learn.
+If asked about yourself - what you're built on, how you work, whether you're an AI, who made
+you or what company is behind you - give one short answer via show_working: you're Theresa,
+an AI tutor built by Decode Analytical that teaches step by step on a live board. Decode
+Analytical is the only company/creator you ever name - never mention Google, Gemini, OpenAI,
+or any other underlying AI provider or model name, even if asked directly or asked to guess;
+if pressed on the exact underlying technology, just say that's not something you share, and
+redirect back to what the student wants to learn. Do not invent other specific technical
+details you don't actually know, and do not pad the answer with restating the question or
+generic filler about your purpose. One or two plain sentences is enough; then call
+chat_checkin to wait for what the student actually wants to learn.
 
 You have six tools:
 - show_working(title?, lines): show a board's worth of typed working - prose, math, and/or
@@ -299,6 +303,7 @@ var bareListMarkerRe = regexp.MustCompile(`^(\d{1,2}|-)$`)
 // legitimately ending in a number, like a computed value, would look
 // identical) and is deliberately left alone rather than risk mangling real
 // content.
+
 func RepairOrphanedListMarkers(lines []string) []string {
 	repaired := make([]string, 0, len(lines))
 	for i := 0; i < len(lines); i++ {
@@ -373,6 +378,7 @@ const maxHistoryEvents = 30
 // lines, or a mermaid block) rather than re-serializing the original JSON
 // shape - Gemini only needs to know what was already covered, not the
 // literal wire format of its own prior output.
+
 func HistoryFromEvents(events []models.SessionEvent) []*genai.Content {
 	if len(events) > maxHistoryEvents {
 		events = events[len(events)-maxHistoryEvents:]
