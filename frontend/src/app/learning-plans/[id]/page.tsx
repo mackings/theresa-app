@@ -9,6 +9,7 @@ import { IconButton } from "@/components/ui/Button";
 import { PlanStepList } from "@/features/learning-plans/components/PlanStepList";
 import { getLearningPlan } from "@/features/learning-plans/lib/api";
 import { LearningPlan } from "@/features/learning-plans/types";
+import { subjectPaletteFor } from "@/features/learning-plans/lib/subjectColor";
 
 // Same poll-while-processing idiom useDocumentUpload.ts already uses for
 // document understanding - matches the backend's own generatePlan shape
@@ -58,6 +59,7 @@ export default function LearningPlanDetailPage() {
 
   const steps = plan.steps ?? [];
   const startedCount = steps.filter((s) => s.session_id).length;
+  const palette = subjectPaletteFor(plan.id);
 
   return (
     <AppShell>
@@ -72,7 +74,9 @@ export default function LearningPlanDetailPage() {
           </IconButton>
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">
-              <NotebookPen className="h-5 w-5 text-[var(--color-accent)]" />
+              <span className={`flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] ${palette.bg} ${palette.text}`}>
+                <NotebookPen className="h-4 w-4" />
+              </span>
               {plan.title}
             </h1>
             <p className="mt-0.5 text-sm text-[var(--color-text-secondary)]">

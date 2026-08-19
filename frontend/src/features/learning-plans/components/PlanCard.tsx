@@ -1,6 +1,8 @@
 import { Loader2, NotebookPen, AlertCircle } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { ProgressRing } from "@/components/ui/ProgressRing";
 import { LearningPlan } from "@/features/learning-plans/types";
+import { subjectPaletteFor } from "@/features/learning-plans/lib/subjectColor";
 
 const STATUS_PILL: Record<LearningPlan["status"], { label: string; className: string }> = {
   generating: {
@@ -28,16 +30,19 @@ export function PlanCard({
   const steps = plan.steps ?? [];
   const startedCount = steps.filter((s) => s.session_id).length;
   const progress = steps.length > 0 ? startedCount / steps.length : 0;
+  const palette = subjectPaletteFor(plan.id);
 
   return (
     <Card
       onClick={onClick}
       className="cursor-pointer overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
     >
-      <div className="flex items-center justify-center bg-[var(--color-surface)] p-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]">
-          <NotebookPen className="h-5 w-5" />
-        </div>
+      <div className={`flex items-center justify-center p-6 ${palette.bg}`}>
+        <ProgressRing progress={progress} color={palette.ring} size={56} strokeWidth={4}>
+          <div className={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-full)] bg-[var(--color-surface-raised)] ${palette.text}`}>
+            <NotebookPen className="h-4 w-4" />
+          </div>
+        </ProgressRing>
       </div>
       <div className="p-4">
         <span
@@ -52,22 +57,8 @@ export function PlanCard({
         </p>
         <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
           {plan.duration_value} {plan.duration_unit}
-          {steps.length > 0 ? ` · ${steps.length} steps` : ""}
+          {steps.length > 0 ? ` · ${startedCount} of ${steps.length} started` : ""}
         </p>
-
-        {steps.length > 0 && (
-          <div className="mt-3">
-            <div className="h-1.5 w-full overflow-hidden rounded-[var(--radius-full)] bg-[var(--color-surface)]">
-              <div
-                className="h-full rounded-[var(--radius-full)] bg-[var(--color-accent)] transition-all"
-                style={{ width: `${Math.max(progress * 100, startedCount > 0 ? 6 : 0)}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-[11px] text-[var(--color-text-secondary)]">
-              {startedCount} of {steps.length} started
-            </p>
-          </div>
-        )}
       </div>
     </Card>
   );

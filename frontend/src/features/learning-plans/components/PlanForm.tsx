@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Calendar, FileText, NotebookPen, Sparkles, Target } from "lucide-react";
+import { AlertCircle, ArrowRight, Calendar, FileText, NotebookPen, Target } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { UploadDropzone } from "@/components/chat/UploadDropzone";
@@ -86,7 +86,14 @@ export function PlanForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <Card className="overflow-hidden">
-        <CardHeader icon={<Target className="h-3.5 w-3.5" />} title="What do you want to learn?" />
+        <CardHeader
+          icon={
+            <span className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]">
+              <Target className="h-3.5 w-3.5" />
+            </span>
+          }
+          title="What do you want to learn?"
+        />
         <div className="p-5 pt-3">
           <SegmentedToggle
             options={["goal", "document"] as const}
@@ -116,7 +123,14 @@ export function PlanForm() {
       </Card>
 
       <Card className="overflow-hidden">
-        <CardHeader icon={<Calendar className="h-3.5 w-3.5" />} title="How long should this plan take?" />
+        <CardHeader
+          icon={
+            <span className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-voice)]/15 text-[var(--color-voice)]">
+              <Calendar className="h-3.5 w-3.5" />
+            </span>
+          }
+          title="How long should this plan take?"
+        />
         <div className="flex items-center gap-3 p-5 pt-3">
           <input
             type="number"
@@ -140,7 +154,7 @@ export function PlanForm() {
       <Button
         type="submit"
         variant="primary"
-        icon={creating ? undefined : <Sparkles className="h-4 w-4" />}
+        icon={creating ? undefined : <ArrowRight className="h-4 w-4" />}
         disabled={!canSubmit}
         className="w-full py-3 text-sm"
       >
