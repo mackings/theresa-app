@@ -26,12 +26,17 @@ func (c *Client) SendVerificationEmail(ctx context.Context, toEmail, toName, ver
 		<p><a href="%s">%s</a></p>
 		<p>This link expires in 24 hours.</p>
 	`, toName, verifyURL, verifyURL)
+	text := fmt.Sprintf(
+		"Hi %s,\n\nWelcome to Theresa. Verify your email address:\n%s\n\nThis link expires in 24 hours.",
+		toName, verifyURL,
+	)
 
 	_, err := c.client.Emails.SendWithContext(ctx, &resend.SendEmailRequest{
 		From:    c.fromEmail,
 		To:      []string{toEmail},
 		Subject: "Verify your Theresa account",
 		Html:    html,
+		Text:    text,
 	})
 	return err
 }
@@ -45,12 +50,17 @@ func (c *Client) SendLowCreditsEmail(ctx context.Context, toEmail, toName string
 		<p>You've used %d%% of your Theresa voice credits - about ₦%.2f left.</p>
 		<p>Top up anytime to keep your voice sessions running without interruption.</p>
 	`, toName, percentUsed, remainingNaira)
+	text := fmt.Sprintf(
+		"Hi %s,\n\nYou've used %d%% of your Theresa voice credits - about ₦%.2f left.\n\nTop up anytime to keep your voice sessions running without interruption.",
+		toName, percentUsed, remainingNaira,
+	)
 
 	_, err := c.client.Emails.SendWithContext(ctx, &resend.SendEmailRequest{
 		From:    c.fromEmail,
 		To:      []string{toEmail},
 		Subject: fmt.Sprintf("You've used %d%% of your Theresa credits", percentUsed),
 		Html:    html,
+		Text:    text,
 	})
 	return err
 }
@@ -62,12 +72,17 @@ func (c *Client) SendPasswordResetEmail(ctx context.Context, toEmail, toName, re
 		<p><a href="%s">%s</a></p>
 		<p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
 	`, toName, resetURL, resetURL)
+	text := fmt.Sprintf(
+		"Hi %s,\n\nWe received a request to reset your Theresa password. Reset it here:\n%s\n\nThis link expires in 1 hour. If you didn't request this, you can safely ignore this email.",
+		toName, resetURL,
+	)
 
 	_, err := c.client.Emails.SendWithContext(ctx, &resend.SendEmailRequest{
 		From:    c.fromEmail,
 		To:      []string{toEmail},
 		Subject: "Reset your Theresa password",
 		Html:    html,
+		Text:    text,
 	})
 	return err
 }
