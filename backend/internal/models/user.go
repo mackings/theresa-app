@@ -33,10 +33,10 @@ type User struct {
 	// far more for a running balance than for a one-off display value.
 	CreditBalanceKobo int64 `bson:"credit_balance_kobo"`
 
-	// FreeTrialSecondsRemaining starts at 300 (5 minutes) for a new account
+	// FreeTrialSecondsRemaining starts at 1800 (30 minutes) for a new account
 	// and decrements as voice sessions run, before any credits are touched.
 	// Cumulative across a single day's sessions, not per-session - a user can
-	// spend it in several short calls instead of one 5-minute sitting. Reset
+	// spend it in several short calls instead of one 30-minute sitting. Reset
 	// back to the full daily allowance once a day (see billing.RefreshDailyFreeTrial),
 	// tracked by FreeTrialResetAt below.
 	FreeTrialSecondsRemaining int `bson:"free_trial_seconds_remaining"`
