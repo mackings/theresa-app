@@ -113,9 +113,26 @@ const FEATURES = [
   },
 ];
 
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Theresa",
+  applicationCategory: "EducationalApplication",
+  operatingSystem: "Web",
+  description:
+    "Theresa is an AI tutor that teaches your course material step by step on a live, visual board - upload a PDF or ask a question, and learn by voice or text.",
+  url: "https://asktheresa.com",
+  creator: { "@type": "Organization", name: "Decode Analytical" },
+  offers: { "@type": "Offer", price: "0", priceCurrency: "NGN" },
+};
+
 export default function Home() {
   return (
     <div className="flex min-h-full flex-col bg-[var(--color-bg)]">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <header className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent)] text-sm font-bold text-[var(--color-accent-foreground)] sm:h-8 sm:w-8 sm:text-base">
