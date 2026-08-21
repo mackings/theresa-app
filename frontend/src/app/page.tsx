@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check, FileUp, Mic } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -39,25 +40,13 @@ function VoicePreview({ size = "h-16 w-16" }: { size?: string }) {
 
 function TheresaFace({ size = "h-24 w-24" }: { size?: string }) {
   return (
-    <svg viewBox="0 0 120 140" className={size} role="img" aria-label="Theresa">
-      <path
-        d="M 8 140 C 8 108 30 96 60 96 C 90 96 112 108 112 140 Z"
-        fill="#2f6459"
-      />
-      <rect x="48" y="82" width="24" height="24" rx="6" fill="#8a5a3c" />
-      <circle cx="60" cy="48" r="36" fill="#3a2418" />
-      <circle cx="32" cy="62" r="5" fill="#8a5a3c" />
-      <circle cx="88" cy="62" r="5" fill="#8a5a3c" />
-      <circle cx="60" cy="58" r="28" fill="#8a5a3c" />
-      <path d="M 46 44 Q 52 39 58 43" stroke="#2b170c" strokeWidth="2" fill="none" strokeLinecap="round" />
-      <path d="M 62 43 Q 68 39 74 44" stroke="#2b170c" strokeWidth="2" fill="none" strokeLinecap="round" />
-      <ellipse cx="51" cy="57" rx="2.4" ry="3" fill="#231208" />
-      <ellipse cx="69" cy="57" rx="2.4" ry="3" fill="#231208" />
-      <path d="M 60 58 Q 58 63 59 66" stroke="#6b4429" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-      <path d="M 51 74 Q 60 78 69 74" stroke="#2b170c" strokeWidth="2" fill="none" strokeLinecap="round" />
-      <circle cx="32" cy="68" r="2.4" fill="#d4af37" />
-      <circle cx="88" cy="68" r="2.4" fill="#d4af37" />
-    </svg>
+    <Image
+      src="/brand/theresa-avatar.png"
+      alt="Theresa"
+      width={220}
+      height={220}
+      className={`${size} rounded-full object-cover object-top`}
+    />
   );
 }
 
@@ -135,9 +124,13 @@ export default function Home() {
       />
       <header className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex shrink-0 items-center gap-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent)] text-sm font-bold text-[var(--color-accent-foreground)] sm:h-8 sm:w-8 sm:text-base">
-            T
-          </div>
+          <Image
+            src="/brand/theresa-face.png"
+            alt="Theresa"
+            width={32}
+            height={32}
+            className="h-7 w-7 shrink-0 rounded-full object-cover sm:h-8 sm:w-8"
+          />
           <span className="text-sm font-semibold text-[var(--color-text-primary)]">
             Theresa
           </span>
