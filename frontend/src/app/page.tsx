@@ -189,8 +189,8 @@ export default function Home() {
 
           {started ? (
             <div
-              className="mx-auto flex w-full max-w-5xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-lg)]"
-              style={{ height: "min(72vh, 640px)" }}
+              className="mx-4 my-6 flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-lg)] sm:mx-auto sm:my-6 sm:w-full sm:max-w-5xl"
+              style={{ height: "clamp(560px, calc(100dvh - 150px), 820px)" }}
             >
               <DemoExperience />
             </div>

@@ -85,12 +85,14 @@ export function DemoExperience() {
         <Board events={events} audioSync={audioSync} />
       </div>
       <div className="flex min-h-0 flex-1 flex-col lg:w-96 lg:flex-none lg:border-l lg:border-[var(--color-border)]">
-        <VoiceControls
-          sessionId={session.id}
-          onBoardUpdate={appendBoardUpdate}
-          audioSync={audioSync}
-          demoMode
-        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <VoiceControls
+            sessionId={session.id}
+            onBoardUpdate={appendBoardUpdate}
+            audioSync={audioSync}
+            demoMode
+          />
+        </div>
       </div>
     </div>
   );
