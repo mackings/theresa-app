@@ -1,10 +1,14 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Check, FileUp, Mic } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, FileUp, Mic } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Pill } from "@/components/ui/Pill";
 import { PhoneMockup } from "@/components/ui/PhoneMockup";
 import { FeatureShowcaseCard } from "@/components/ui/FeatureShowcaseCard";
+import { DemoExperience } from "@/components/demo/DemoExperience";
 
 const CHECKLIST = [
   "Teaches any topic, not just uploaded material",
@@ -102,6 +106,21 @@ const FEATURES = [
   },
 ];
 
+const TEAM = [
+  {
+    name: "Kingsley Udoma",
+    title: "Founder",
+    photo: "/team/kingsley-udoma.png",
+    linkedin: "https://www.linkedin.com/in/udomakingsley/",
+  },
+  {
+    name: "Jide Loye",
+    title: "Product Lead",
+    photo: "/team/jide-loye.png",
+    linkedin: "https://www.linkedin.com/in/taiwo-olajide-loye-0954563b6/",
+  },
+];
+
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -116,6 +135,8 @@ const structuredData = {
 };
 
 export default function Home() {
+  const [started, setStarted] = useState(false);
+
   return (
     <div className="flex min-h-full flex-col bg-[var(--color-bg)]">
       <script
@@ -166,11 +187,17 @@ export default function Home() {
             style={{ background: "var(--color-accent)" }}
           />
 
+          {started ? (
+            <div
+              className="mx-auto flex w-full max-w-5xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-lg)]"
+              style={{ height: "min(72vh, 640px)" }}
+            >
+              <DemoExperience />
+            </div>
+          ) : (
           <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 px-6 py-14 lg:grid-cols-2 lg:py-24">
             <div>
-              <Pill>AI-powered tutoring</Pill>
-
-              <h1 className="mt-5 text-4xl font-bold leading-[1.1] tracking-tight text-[var(--color-text-primary)] sm:text-5xl lg:text-6xl">
+              <h1 className="text-4xl font-bold leading-[1.1] tracking-tight text-[var(--color-text-primary)] sm:text-5xl lg:text-6xl">
                 Learn anything,
                 <br />
                 <span className="text-[var(--color-accent)]">taught out loud.</span>
@@ -181,7 +208,11 @@ export default function Home() {
                 board, like a tutor beside you, not a search result.
               </p>
 
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+              {/* Get Started / Log in - commented out for now in favor of
+                  the inline "Start Learning now" demo below. Restore this
+                  block (and remove the button beneath it) to go back to
+                  routing straight to signup/login from the hero. */}
+              {/* <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Link
                   href="/signup"
                   className="flex items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-6 py-3 text-sm font-semibold text-[var(--color-accent-foreground)] shadow-[var(--shadow-sm)] transition-opacity hover:opacity-90"
@@ -195,7 +226,18 @@ export default function Home() {
                 >
                   Log in
                 </Link>
-              </div>
+              </div> */}
+
+              {!started && (
+                <button
+                  type="button"
+                  onClick={() => setStarted(true)}
+                  className="mt-7 flex animate-bounce items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-6 py-3 text-sm font-semibold text-[var(--color-accent-foreground)] shadow-[var(--shadow-sm)] transition-opacity hover:opacity-90"
+                >
+                  Start Learning now
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
 
               <ul className="mt-8 space-y-2.5">
                 {CHECKLIST.map((item) => (
@@ -280,6 +322,7 @@ export default function Home() {
               </div>
             </div>
           </div>
+          )}
         </section>
 
         <section className="mx-auto w-full max-w-3xl px-6 py-16 sm:py-20">
@@ -349,28 +392,43 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="relative overflow-hidden bg-[var(--color-accent)] px-6 py-16 text-[var(--color-accent-foreground)] sm:py-20">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-white/10 blur-3xl"
-          />
-          <div className="relative mx-auto flex max-w-4xl flex-col items-center gap-6 text-center">
-            <h2 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-              Ready to actually understand it?
+        <section className="mx-auto w-full max-w-4xl px-6 py-16 sm:py-20">
+          <div className="text-center">
+            <Pill>Who&rsquo;s building Theresa</Pill>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight text-[var(--color-text-primary)] sm:text-4xl">
+              Meet the team
             </h2>
-            <Link
-              href="/signup"
-              className="flex items-center gap-2 rounded-[var(--radius-md)] bg-white px-6 py-3 text-sm font-semibold text-[var(--color-accent)] shadow-[var(--shadow-sm)] transition-opacity hover:opacity-90"
-            >
-              Get Started
-              <ArrowRight className="h-4 w-4" />
-            </Link>
+          </div>
+
+          <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {TEAM.map((person) => (
+              <a
+                key={person.name}
+                href={person.linkedin}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-4 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-xs)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+              >
+                <Image
+                  src={person.photo}
+                  alt={person.name}
+                  width={72}
+                  height={72}
+                  className="h-16 w-16 shrink-0 rounded-full object-cover sm:h-[72px] sm:w-[72px]"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-semibold text-[var(--color-text-primary)]">{person.name}</p>
+                  <p className="text-sm text-[var(--color-text-secondary)]">{person.title}</p>
+                  <span className="mt-1.5 flex items-center gap-1 text-xs font-medium text-[var(--color-accent)]">
+                    LinkedIn
+                    <ExternalLink className="h-3 w-3" />
+                  </span>
+                </div>
+              </a>
+            ))}
           </div>
         </section>
+
       </main>
 
       <footer className="border-t border-[var(--color-border)] px-6 py-8 text-xs text-[var(--color-text-secondary)]">
@@ -383,6 +441,28 @@ export default function Home() {
             <span className="text-[var(--color-border)]">·</span>
             <span className="opacity-70">A product of Decode Analytical</span>
           </div>
+
+          <div className="flex items-center gap-4">
+            <a
+              href="https://x.com/Theresa_hq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 transition-colors hover:text-[var(--color-text-primary)]"
+            >
+              X
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            <a
+              href="https://www.instagram.com/theresa_hq/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 transition-colors hover:text-[var(--color-text-primary)]"
+            >
+              Instagram
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
           <span>&copy; {new Date().getFullYear()} Theresa. All rights reserved.</span>
         </div>
       </footer>

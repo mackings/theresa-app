@@ -62,4 +62,14 @@ type User struct {
 	// teaching demand exists before we build for it. Empty on every
 	// existing account until they hit that gate.
 	AccountType string `bson:"account_type,omitempty"`
+
+	// IsDemo marks an ephemeral, no-password, no-email account minted by
+	// DemoHandler.Start for the public landing-page "try it now" flow - real
+	// enough to reuse every session/voice/billing code path unmodified, but
+	// permanently excluded from the daily free-trial refresh (see
+	// billing.RefreshDailyFreeTrial) and from triggering real generation
+	// cost outside a voice/text chat (document upload, learning-plan
+	// generation, org creation - see isDemoCaller). Never set on a real
+	// signed-up account.
+	IsDemo bool `bson:"is_demo,omitempty"`
 }

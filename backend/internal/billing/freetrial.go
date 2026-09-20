@@ -17,6 +17,15 @@ import (
 // granted once at signup. Mutates user in place and persists the change only
 // when a reset actually happens; returns whether it did.
 func RefreshDailyFreeTrial(ctx context.Context, db *mongo.Database, user *models.User) bool {
+	// A demo account's session cookie lives for JWTTTL (60 days) - without
+	// this guard, simply holding onto that cookie across a single UTC
+	// midnight would top an ephemeral, password-less account up to the full
+	// daily allowance indefinitely, defeating the whole point of the demo's
+	// small one-time grant (see DemoHandler.Start).
+	if user.IsDemo {
+		return false
+	}
+
 	now := time.Now().UTC()
 	if sameUTCDay(user.FreeTrialResetAt, now) {
 		return false

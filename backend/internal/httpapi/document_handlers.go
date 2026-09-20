@@ -69,6 +69,10 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too many uploads, please try again later")
 		return
 	}
+	if isDemoCaller(r.Context(), h.db, ownerID) {
+		writeError(w, http.StatusForbidden, "document upload isn't available in the demo - sign up to try it")
+		return
+	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, h.cfg.MaxUploadSizeBytes)
 	if err := r.ParseMultipartForm(h.cfg.MaxUploadSizeBytes); err != nil {

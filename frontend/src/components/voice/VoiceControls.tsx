@@ -20,10 +20,15 @@ export function VoiceControls({
   sessionId,
   onBoardUpdate,
   audioSync,
+  demoMode = false,
 }: {
   sessionId: string;
   onBoardUpdate: (block: BoardContentBlock) => void;
   audioSync: BoardAudioSync;
+  // The anonymous /try demo reuses this component unmodified for everything
+  // except this one CTA: a demo account has no /credits to add to, so its
+  // out-of-credits moment should point at signing up instead.
+  demoMode?: boolean;
 }) {
   const router = useRouter();
   const [micOn, setMicOn] = useState(false);
@@ -177,14 +182,14 @@ export function VoiceControls({
         </div>
         <Pill>Theresa</Pill>
         <p className="max-w-xs text-center text-base font-semibold text-[var(--color-text-primary)] sm:text-xl">
-          {outOfCredits ? "Out of voice credits" : status}
+          {outOfCredits ? (demoMode ? "That's the end of your free preview" : "Out of voice credits") : status}
         </p>
         {outOfCredits && (
           <Link
-            href="/credits"
+            href={demoMode ? "/signup" : "/credits"}
             className="rounded-[var(--radius-full)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-accent-foreground)] shadow-[var(--shadow-xs)] transition-opacity hover:opacity-90"
           >
-            Add credits to keep going
+            {demoMode ? "Sign up to keep learning" : "Add credits to keep going"}
           </Link>
         )}
       </div>
@@ -262,10 +267,14 @@ export function VoiceControls({
       <ConfirmDialog
         open={confirmingEnd}
         title="End this voice session?"
-        description="Theresa will stop talking and you'll be taken back to the dashboard."
+        description={
+          demoMode
+            ? "Theresa will stop talking. Sign up to keep learning and save your progress."
+            : "Theresa will stop talking and you'll be taken back to the dashboard."
+        }
         confirmLabel="End session"
         cancelLabel="Stay"
-        onConfirm={() => router.push("/dashboard")}
+        onConfirm={() => router.push(demoMode ? "/signup" : "/dashboard")}
         onCancel={() => setConfirmingEnd(false)}
       />
     </div>

@@ -71,6 +71,10 @@ func (h *LearningPlanHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too many plans created, please try again later")
 		return
 	}
+	if isDemoCaller(r.Context(), h.db, ownerID) {
+		writeError(w, http.StatusForbidden, "learning plans aren't available in the demo - sign up to try it")
+		return
+	}
 
 	var req createLearningPlanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

@@ -125,6 +125,9 @@ func NewRouter(db *mongo.Database, cfg config.Config, emailClient *email.Client,
 		})
 	})
 
+	demoHandler := NewDemoHandler(db, cfg)
+	r.Post("/api/demo/start", demoHandler.Start)
+
 	docHandler := NewDocumentHandler(db, cfg, geminiClient)
 	r.Route("/api/documents", func(r chi.Router) {
 		r.Use(auth.RequireAuth(db, cfg.JWTSecret, sessionCookieCfg))
