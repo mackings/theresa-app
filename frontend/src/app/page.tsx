@@ -438,8 +438,6 @@ export default function Home() {
               T
             </div>
             <span>Theresa</span>
-            <span className="text-[var(--color-border)]">·</span>
-            <span className="opacity-70">A product of Decode Analytical</span>
           </div>
 
           <div className="flex items-center gap-4">
