@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check, ExternalLink, FileUp, Mic } from "lucide-react";
@@ -8,7 +5,6 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Pill } from "@/components/ui/Pill";
 import { PhoneMockup } from "@/components/ui/PhoneMockup";
 import { FeatureShowcaseCard } from "@/components/ui/FeatureShowcaseCard";
-import { DemoExperience } from "@/components/demo/DemoExperience";
 
 const CHECKLIST = [
   "Teaches any topic, not just uploaded material",
@@ -135,8 +131,6 @@ const structuredData = {
 };
 
 export default function Home() {
-  const [started, setStarted] = useState(false);
-
   return (
     <div className="flex min-h-full flex-col bg-[var(--color-bg)]">
       <script
@@ -187,14 +181,6 @@ export default function Home() {
             style={{ background: "var(--color-accent)" }}
           />
 
-          {started ? (
-            <div
-              className="mx-4 my-6 flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-lg)] sm:mx-auto sm:my-6 sm:w-full sm:max-w-5xl"
-              style={{ height: "clamp(560px, calc(100dvh - 150px), 820px)" }}
-            >
-              <DemoExperience />
-            </div>
-          ) : (
           <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 px-6 py-14 lg:grid-cols-2 lg:py-24">
             <div>
               <h1 className="text-4xl font-bold leading-[1.1] tracking-tight text-[var(--color-text-primary)] sm:text-5xl lg:text-6xl">
@@ -228,16 +214,13 @@ export default function Home() {
                 </Link>
               </div> */}
 
-              {!started && (
-                <button
-                  type="button"
-                  onClick={() => setStarted(true)}
-                  className="mt-7 flex animate-bounce items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-6 py-3 text-sm font-semibold text-[var(--color-accent-foreground)] shadow-[var(--shadow-sm)] transition-opacity hover:opacity-90"
-                >
-                  Start Learning now
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              )}
+              <Link
+                href="/try"
+                className="mt-7 flex animate-bounce items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-6 py-3 text-sm font-semibold text-[var(--color-accent-foreground)] shadow-[var(--shadow-sm)] transition-opacity hover:opacity-90"
+              >
+                Start Learning now
+                <ArrowRight className="h-4 w-4" />
+              </Link>
 
               <ul className="mt-8 space-y-2.5">
                 {CHECKLIST.map((item) => (
@@ -322,7 +305,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-          )}
         </section>
 
         <section className="mx-auto w-full max-w-3xl px-6 py-16 sm:py-20">

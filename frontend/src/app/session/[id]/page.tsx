@@ -23,6 +23,16 @@ export default function SessionPage() {
   const [solving, setSolving] = useState(false);
   const nextSeqRef = useRef(0);
   const [audioSync] = useState(() => new BoardAudioSync());
+  const [isDemo, setIsDemo] = useState(false);
+
+  useEffect(() => {
+    // Read directly off window.location rather than next/navigation's
+    // useSearchParams, which requires wrapping in a Suspense boundary just
+    // for this one purely-cosmetic flag - see /try/page.tsx, the only
+    // place that ever links here with ?demo=1.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsDemo(new URLSearchParams(window.location.search).get("demo") === "1");
+  }, []);
 
   useEffect(() => {
     apiFetch<TutorSession>(`/api/sessions/${params.id}`)
@@ -115,6 +125,7 @@ export default function SessionPage() {
                 sessionId={session.id}
                 onBoardUpdate={appendBoardUpdate}
                 audioSync={audioSync}
+                demoMode={isDemo}
               />
             </div>
           ) : (
